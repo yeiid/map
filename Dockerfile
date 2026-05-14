@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies for GDAL/PostGIS tools
 RUN apt-get update && apt-get install -y \
     libgdal-dev \
+    gdal-bin \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 

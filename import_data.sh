@@ -1,5 +1,5 @@
 #!/bin/bash
-DB_CONN="PG:host=localhost user=mapengine dbname=mapdb password=mapengine123"
+DB_CONN="PG:host=db user=mapengine dbname=mapdb password=mapengine123"
 SRC="data/mapa_guajira.gpkg"
 
 echo "Importando capas desde $SRC a PostGIS..."
