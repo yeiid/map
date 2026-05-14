@@ -1,353 +1,458 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NeuralJira Map Engine | Dashboard</title>
-    <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-dark: #0f172a;
-            --sidebar-bg: #1e293b;
-            --accent: #38bdf8;
-            --accent-hover: #7dd3fc;
-            --success: #22c55e;
-            --error: #ef4444;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --card-bg: #334155;
-        }
-
-        body { 
-            margin: 0; 
-            display: flex; 
-            height: 100vh; 
-            font-family: 'Inter', sans-serif; 
-            background: var(--bg-dark); 
-            color: var(--text-main); 
-            overflow: hidden;
-        }
-
-        #sidebar { 
-            width: 360px; 
-            padding: 24px; 
-            background: var(--sidebar-bg); 
-            border-right: 1px solid #334155; 
-            overflow-y: auto; 
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            box-shadow: 10px 0 30px rgba(0,0,0,0.3);
-            z-index: 10;
-        }
-
-        h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.02em; }
-        h1 { font-size: 1.5rem; color: var(--accent); display: flex; align-items: center; gap: 10px; }
-        h1 span { font-size: 0.8rem; background: rgba(56, 189, 248, 0.2); padding: 4px 8px; border-radius: 4px; }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .btn-primary { background: var(--accent); color: var(--bg-dark); }
-        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
-        
-        .btn-scan { 
-            background: linear-gradient(135deg, #22c55e, #10b981); 
-            color: white; 
-            font-size: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
-        }
-        .btn-scan:hover { filter: brightness(1.1); transform: scale(1.02); }
-
-        .section { 
-            background: var(--card-bg); 
-            padding: 16px; 
-            border-radius: 12px; 
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .section h3 { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; }
-
-        #map { flex: 1; position: relative; }
-
-        .layer-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .layer-item:last-child { border: 0; }
-        
-        .toggle {
-            width: 40px;
-            height: 20px;
-            background: #475569;
-            border-radius: 20px;
-            position: relative;
-            cursor: pointer;
-        }
-        .toggle.active { background: var(--success); }
-        .toggle::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 16px;
-            height: 16px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.2s;
-        }
-        .toggle.active::after { left: 22px; }
-
-        #loading { 
-            display:none; 
-            position:fixed; 
-            top:0; left:0; 
-            width:100%; height:100%; 
-            background:rgba(15, 23, 42, 0.9); 
-            z-index:1000; 
-            justify-content:center; 
-            align-items:center; 
-            flex-direction:column;
-            backdrop-filter: blur(5px);
-        }
-
-        .loader {
-            width: 60px;
-            height: 60px;
-            border: 4px solid var(--accent);
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .status-badge {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.75rem;
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: #1e293b;
-        }
-
-        .error-log {
-            max-height: 150px;
-            overflow-y: auto;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.7rem;
-            color: #fca5a5;
-            padding: 10px;
-            background: rgba(239, 68, 68, 0.1);
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuralJira Admin</title>
+<script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f172a;--sidebar:#1e293b;--accent:#38bdf8;--accent-hover:#7dd3fc;--success:#22c55e;--error:#ef4444;--warning:#f59e0b;--text:#f8fafc;--muted:#94a3b8;--card:#334155;--border:rgba(255,255,255,0.05)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+a{color:var(--accent);text-decoration:none}
+/* ─── Login ─── */
+#login-overlay{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,0.95);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center}
+.login-box{background:var(--sidebar);padding:40px;border-radius:20px;width:380px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 25px 50px rgba(0,0,0,0.5)}
+.login-box h1{font-size:1.8rem;color:var(--accent);text-align:center;margin-bottom:4px}
+.login-box p{text-align:center;color:var(--muted);font-size:.85rem;margin-bottom:28px}
+.login-box input{width:100%;padding:14px 16px;margin-bottom:12px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:var(--text);font-size:.95rem;outline:none;transition:.2s}
+.login-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,0.2)}
+.login-box button{width:100%;padding:14px;border:none;border-radius:10px;background:var(--accent);color:var(--bg);font-weight:700;font-size:1rem;cursor:pointer;transition:.2s;margin-top:8px}
+.login-box button:hover{background:var(--accent-hover)}
+.login-error{color:var(--error);font-size:.8rem;text-align:center;margin-top:12px;display:none}
+.login-info{text-align:center;font-size:.75rem;color:var(--muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+/* ─── Dashboard ─── */
+#dashboard{display:none;height:100vh;flex-direction:row}
+#sidebar{width:380px;padding:20px;background:var(--sidebar);border-right:1px solid #334155;overflow-y:auto;display:flex;flex-direction:column;gap:16px;box-shadow:10px 0 30px rgba(0,0,0,0.3);z-index:10;flex-shrink:0}
+#map{flex:1;position:relative}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.header h1{font-size:1.3rem;color:var(--accent);display:flex;align-items:center;gap:8px}
+.header h1 span{font-size:.65rem;background:rgba(56,189,248,0.2);padding:3px 8px;border-radius:4px;color:var(--accent)}
+.user-badge{font-size:.75rem;color:var(--muted);text-align:right}
+.user-badge strong{color:var(--text)}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;font-size:.85rem}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-danger{background:var(--error);color:#fff}
+.btn-danger:hover{filter:brightness(1.1)}
+.btn-scan{background:linear-gradient(135deg,#22c55e,#10b981);color:#fff;text-transform:uppercase;letter-spacing:.05em;box-shadow:0 4px 15px rgba(34,197,94,0.3)}
+.btn-scan:hover{filter:brightness(1.1)}
+.btn-warning{background:var(--warning);color:#000}
+.btn-warning:hover{filter:brightness(1.1)}
+.btn-outline{background:transparent;border:1px solid #475569;color:var(--text)}
+.btn-outline:hover{background:rgba(255,255,255,0.05)}
+.btn-sm{padding:8px 12px;font-size:.75rem;display:inline-flex;width:auto}
+.section{background:var(--card);padding:14px;border-radius:12px;border:1px solid var(--border)}
+.section-title{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;font-weight:600}
+/* ─── Stats ─── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-card{background:rgba(15,23,42,0.5);padding:10px;border-radius:8px;text-align:center}
+.stat-card .num{font-size:1.5rem;font-weight:700;color:var(--accent)}
+.stat-card .label{font-size:.65rem;color:var(--muted);text-transform:uppercase;margin-top:2px}
+/* ─── Upload ─── */
+.upload-zone{border:2px dashed #475569;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:.2s}
+.upload-zone:hover{border-color:var(--accent);background:rgba(56,189,248,0.05)}
+.upload-zone.has-file{border-color:var(--success);background:rgba(34,197,94,0.05)}
+.upload-zone p{font-size:.8rem;color:var(--muted);margin-top:6px}
+.upload-zone .file-name{color:var(--success);font-weight:600;font-size:.85rem}
+/* ─── Layers ─── */
+.layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.layer-item:last-child{border:0}
+.toggle{width:40px;height:20px;background:#475569;border-radius:20px;position:relative;cursor:pointer;flex-shrink:0;transition:.2s}
+.toggle.active{background:var(--success)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s}
+.toggle.active::after{left:22px}
+/* ─── Activity ─── */
+.activity-list{max-height:150px;overflow-y:auto;font-size:.7rem}
+.activity-item{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;gap:8px;color:var(--muted)}
+.activity-item .time{color:var(--muted);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+/* ─── Loading ─── */
+#loading{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.9);z-index:1000;justify-content:center;align-items:center;flex-direction:column;backdrop-filter:blur(5px)}
+.loader{width:50px;height:50px;border:4px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .8s cubic-bezier(.68,-.55,.27,1.55) infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-msg{font-size:.8rem;padding:8px;border-radius:6px;margin-top:8px;display:none}
+.status-msg.success{display:block;background:rgba(34,197,94,0.15);color:var(--success);border:1px solid rgba(34,197,94,0.3)}
+.status-msg.error{display:block;background:rgba(239,68,68,0.15);color:var(--error);border:1px solid rgba(239,68,68,0.3)}
+#log{max-height:120px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#fca5a5;padding:10px;background:rgba(239,68,68,0.1);border-radius:8px;display:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#475569;border-radius:4px}
+</style>
 </head>
 <body>
-    <div id="loading">
-        <div class="loader"></div>
-        <p style="margin-top: 20px; font-weight: 600;">Procesando GeoData...</p>
+
+<div id="login-overlay">
+  <div class="login-box">
+    <h1>NeuralJira</h1>
+    <p>Panel de Administración</p>
+    <input type="text" id="login-user" placeholder="Usuario" autocomplete="username">
+    <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password">
+    <button onclick="doLogin()">Ingresar</button>
+    <div class="login-error" id="login-error">Credenciales incorrectas</div>
+    <div class="login-info">
+      Default: <strong>admin</strong> / <strong>admin123</strong><br>
+      Cambia la contraseña después del primer ingreso.
+    </div>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="loader"></div>
+  <p style="margin-top:16px;font-weight:600;font-size:.9rem">Procesando...</p>
+</div>
+
+<div id="dashboard">
+  <div id="sidebar">
+    <div class="header">
+      <h1>NeuralJira <span>ADMIN</span></h1>
+      <div class="user-badge" id="user-badge">👤 <strong id="username-display">—</strong><br><span style="font-size:.65rem;cursor:pointer;color:var(--error)" onclick="doLogout()">Cerrar sesión</span></div>
     </div>
 
-    <div id="sidebar">
-        <h1>NeuralJira Maps <span>v2.0</span></h1>
-        
-        <button class="btn btn-scan" onclick="scanData()">⚡ Escanear Carpeta Data</button>
-
-        <div class="section">
-            <h3>Capas en DB</h3>
-            <div id="layer-list">
-                <p style="font-size: 0.8rem; color: var(--text-muted);">Sin capas cargadas.</p>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>Subida Manual</h3>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                <input type="file" id="geoFile" style="font-size: 0.8rem; color: var(--text-muted);">
-                <button class="btn btn-primary" onclick="uploadData()">📤 Subir y Procesar</button>
-            </div>
-        </div>
-
-        <div id="scan-report" style="display: none;">
-            <div class="section" style="border: 1px solid var(--error);">
-                <h3 style="color: var(--error);">Errores / Alertas</h3>
-                <div id="error-content" class="error-log"></div>
-            </div>
-        </div>
-
-        <div style="margin-top: auto; font-size: 0.7rem; color: var(--text-muted); line-height: 1.5;">
-            Engine: PostGIS + Martin + FastAPI<br>
-            Ruta Data: <code style="color: var(--accent);">/app/data</code>
-        </div>
+    <div class="section">
+      <div class="section-title">📊 Estadísticas</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="num" id="stat-requests">0</div><div class="label">Peticiones</div></div>
+        <div class="stat-card"><div class="num" id="stat-layers">0</div><div class="label">Capas</div></div>
+        <div class="stat-card"><div class="num" id="stat-features">0</div><div class="label">Features</div></div>
+        <div class="stat-card"><div class="num" id="stat-logins">0</div><div class="label">Logins</div></div>
+      </div>
     </div>
-    
-    <div id="map"></div>
 
-    <script>
-        const map = new maplibregl.Map({
-            container: 'map',
-            style: {
-                "version": 8,
-                "sources": {
-                    "martin": {
-                        "type": "vector",
-                        "tiles": [location.origin.replace(':8000', ':3000') + "/{table}/{z}/{x}/{y}.pbf"],
-                        "minzoom": 0,
-                        "maxzoom": 22
-                    }
-                },
-                "layers": [
-                    { "id": "background", "type": "background", "paint": { "background-color": "#0f172a" } }
-                ]
-            },
-            center: [-72.92, 11.54],
-            zoom: 10
-        });
+    <div class="section">
+      <div class="section-title">📤 Subir GPKG / GeoJSON</div>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <div style="font-size:1.5rem;margin-bottom:4px">📁</div>
+        <p id="upload-label">Haz clic para seleccionar archivo (GPKG, GeoJSON)</p>
+      </div>
+      <input type="file" id="file-input" accept=".gpkg,.geojson,.json" style="display:none" onchange="fileSelected()">
+      <div id="file-info" style="display:none;margin-top:8px">
+        <span class="file-name" id="file-name"></span>
+        <span style="font-size:.75rem;color:var(--muted)" id="file-size"></span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-primary" style="flex:1" onclick="uploadFile(false)">Importar</button>
+        <button class="btn btn-warning" style="flex:1" onclick="uploadFile(true)">Reemplazar Todo</button>
+      </div>
+      <div id="upload-status" class="status-msg"></div>
+    </div>
 
-        const MARTIN_URL = location.origin.replace(':8000', ':3000');
+    <div class="section">
+      <div class="section-title">⚡ Acciones</div>
+      <button class="btn btn-scan" onclick="scanData()">Escanear Carpeta Data</button>
+      <div id="scan-status" class="status-msg"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-outline btn-sm" onclick="refreshData()" style="flex:1">🔄 Refrescar</button>
+        <button class="btn btn-danger btn-sm" onclick="clearData()" style="flex:1">🗑️ Limpiar DB</button>
+      </div>
+    </div>
 
-        async function loadLayers() {
-            try {
-                const res = await fetch('/api/layers');
-                const data = await res.json();
-                const list = document.getElementById('layer-list');
-                list.innerHTML = '';
-                
-                if (data.layers.length === 0) {
-                    list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-muted);">No hay capas espaciales en PostGIS.</p>';
-                    return;
-                }
+    <div class="section" style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="section-title">🗺️ Capas en PostGIS</div>
+      <div id="layer-list" style="flex:1;overflow-y:auto;font-size:.85rem">
+        <p style="color:var(--muted);font-size:.8rem">Sin capas cargadas.</p>
+      </div>
+    </div>
 
-                data.layers.forEach(layer => {
-                    const icon = getLayerIcon(layer.type);
-                    const item = document.createElement('div');
-                    item.className = 'layer-item';
-                    item.innerHTML = `
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-size: 0.7rem; opacity:0.6;">${icon}</span>
-                            <span style="font-size: 0.9rem;">${layer.name}</span>
-                        </div>
-                        <div class="toggle" id="toggle-${layer.name}" onclick="toggleLayer('${layer.name}', '${layer.type}')"></div>
-                    `;
-                    list.appendChild(item);
-                });
-            } catch (err) { console.error(err); }
-        }
+    <div class="section">
+      <div class="section-title">📝 Actividad Reciente</div>
+      <div id="activity-list" class="activity-list">
+        <p style="color:var(--muted);font-size:.75rem">Sin actividad.</p>
+      </div>
+    </div>
 
-        function getLayerIcon(type) {
-            if (type.includes('POLYGON')) return '⬚';
-            if (type.includes('LINE')) return '⌇';
-            if (type.includes('POINT')) return '•';
-            return '◈';
-        }
+    <div id="log"></div>
 
-        function toggleLayer(layerName, type) {
-            const toggle = document.getElementById(`toggle-${layerName}`);
-            const isActive = toggle.classList.toggle('active');
+    <div style="font-size:.65rem;color:var(--muted);line-height:1.5;margin-top:auto;padding-top:8px">
+      Engine: PostGIS + Martin + FastAPI &bull; <a href="/preview" target="_blank">Vista Pública</a>
+    </div>
+  </div>
 
-            if (isActive) {
-                if (!map.getSource(layerName)) {
-                    map.addSource(layerName, {
-                        "type": "vector",
-                        "tiles": [`${MARTIN_URL}/${layerName}/{z}/{x}/{y}.pbf`],
-                    });
-                }
-                
-                const color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-                
-                if (type.includes('POLYGON')) {
-                    map.addLayer({
-                        "id": layerName,
-                        "type": "fill",
-                        "source": layerName,
-                        "source-layer": layerName,
-                        "paint": { "fill-color": color, "fill-opacity": 0.6, "fill-outline-color": "#ffffff" }
-                    });
-                } else if (type.includes('LINE')) {
-                    map.addLayer({
-                        "id": layerName,
-                        "type": "line",
-                        "source": layerName,
-                        "source-layer": layerName,
-                        "paint": { "line-color": color, "line-width": 2 }
-                    });
-                } else {
-                    map.addLayer({
-                        "id": layerName,
-                        "type": "circle",
-                        "source": layerName,
-                        "source-layer": layerName,
-                        "paint": { "circle-color": color, "circle-radius": 5, "circle-stroke-width": 1, "circle-stroke-color": "#fff" }
-                    });
-                }
-            } else {
-                if (map.getLayer(layerName)) map.removeLayer(layerName);
-            }
-        }
+  <div id="map"></div>
+</div>
 
-        async function scanData() {
-            document.getElementById('loading').style.display = 'flex';
-            document.getElementById('scan-report').style.display = 'none';
-            try {
-                const response = await fetch('/api/scan');
-                const result = await response.json();
-                
-                let reportHtml = '';
-                if (result.errors && result.errors.length > 0) {
-                    reportHtml += `<p style="color:var(--error); font-weight:bold; margin:0 0 5px 0;">Errores:</p>${result.errors.join('<br>')}<br><br>`;
-                }
-                if (result.warnings && result.warnings.length > 0) {
-                    reportHtml += `<p style="color:#fbbf24; font-weight:bold; margin:0 0 5px 0;">Avisos:</p>${result.warnings.join('<br>')}`;
-                }
-                
-                if (reportHtml) {
-                    document.getElementById('scan-report').style.display = 'block';
-                    document.getElementById('error-content').innerHTML = reportHtml;
-                }
-                
-                if (result.imported_layers.length > 0) {
-                    alert("Importadas: " + result.imported_layers.length + " capas.");
-                }
-                loadLayers();
-            } catch (err) { alert("Error de conexión"); }
-            finally { document.getElementById('loading').style.display = 'none'; }
-        }
+<script>
+const API = '';
+let TOKEN = localStorage.getItem('nj_token');
+let map = null;
+let mapLayers = {};
 
-        async function uploadData() {
-            const file = document.getElementById('geoFile').files[0];
-            if (!file) return alert("Selecciona archivo");
-            const fd = new FormData();
-            fd.append('layer_name', "upload");
-            fd.append('file', file);
-            document.getElementById('loading').style.display = 'flex';
-            try {
-                const response = await fetch('/api/upload', { method: 'POST', body: fd });
-                loadLayers();
-            } catch (err) { alert("Error"); }
-            finally { document.getElementById('loading').style.display = 'none'; }
-        }
+async function api(path, opts = {}) {
+  const headers = { ...opts.headers };
+  if (TOKEN) headers['Authorization'] = `Bearer ${TOKEN}`;
+  if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`${API}${path}`, { ...opts, headers });
+  if (res.status === 401) { doLogout(); throw new Error('Unauthorized'); }
+  return res.json();
+}
 
-        map.on('load', loadLayers);
-    </script>
+// ─── Auth ───
+async function doLogin() {
+  const user = document.getElementById('login-user').value;
+  const pass = document.getElementById('login-pass').value;
+  if (!user || !pass) return;
+  try {
+    const form = new URLSearchParams();
+    form.append('username', user);
+    form.append('password', pass);
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form
+    });
+    if (!res.ok) throw new Error('Login failed');
+    const data = await res.json();
+    TOKEN = data.access_token;
+    localStorage.setItem('nj_token', TOKEN);
+    document.getElementById('login-error').style.display = 'none';
+    initDashboard();
+  } catch(e) {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('nj_token');
+  TOKEN = null;
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+// ─── Init ───
+async function initDashboard() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'flex';
+
+  if (!map) {
+    map = new maplibregl.Map({
+      container: 'map',
+      style: '/api/v1/style.json',
+      center: [-72.92, 11.54],
+      zoom: 10,
+      pitch: 45,
+      bearing: -17,
+      antialias: true
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+    map.addControl(new maplibregl.FullscreenControl());
+  }
+
+  try {
+    const me = await api('/api/v1/auth/me');
+    document.getElementById('username-display').textContent = me.username;
+  } catch(e) {}
+
+  await refreshData();
+}
+
+async function refreshData() {
+  await Promise.all([loadLayers(), loadStats()]);
+}
+
+// ─── Layers ───
+async function loadLayers() {
+  try {
+    const data = await api('/api/v1/layers');
+    const list = document.getElementById('layer-list');
+    list.innerHTML = '';
+    if (!data.layers || data.layers.length === 0) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:.8rem">No hay capas espaciales en PostGIS.</p>';
+      return;
+    }
+    data.layers.forEach(layer => {
+      const item = document.createElement('div');
+      item.className = 'layer-item';
+      const icon = layer.type.includes('POLYGON') ? '⬚' : layer.type.includes('LINE') ? '⌇' : layer.type.includes('POINT') ? '•' : '◈';
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;overflow:hidden">
+          <span style="font-size:.7rem;opacity:.6;flex-shrink:0">${icon}</span>
+          <div style="overflow:hidden">
+            <div style="font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${layer.name}</div>
+            <div style="font-size:.65rem;color:var(--muted)">${layer.features.toLocaleString()} features</div>
+          </div>
+        </div>
+        <div class="toggle" id="toggle-${layer.name}" onclick="toggleLayer('${layer.name}','${layer.type}','${layer.features}')"></div>`;
+      list.appendChild(item);
+    });
+    return data;
+  } catch(e) { console.error(e); }
+}
+
+function getRandomColor() { return `hsl(${Math.random()*360},70%,60%)`; }
+
+function toggleLayer(name, type, features) {
+  const el = document.getElementById(`toggle-${name}`);
+  const on = el.classList.toggle('active');
+  features = parseInt(features);
+
+  if (on) {
+    if (features > 50000 && !confirm(`Esta capa tiene ${features.toLocaleString()} features. ¿Mostrar de todas formas?`)) {
+      el.classList.remove('active');
+      return;
+    }
+    if (!map.getSource(name)) {
+      map.addSource(name, { type: 'vector', tiles: [`${location.origin.replace(':8000',':3000')}/${name}/{z}/{x}/{y}.pbf`] });
+    }
+    const color = getRandomColor();
+    let layerType, paint;
+    if (type.includes('POLYGON')) {
+      layerType = 'fill';
+      paint = { 'fill-color': color, 'fill-opacity': 0.5, 'fill-outline-color': '#fff' };
+    } else if (type.includes('LINE')) {
+      layerType = 'line';
+      paint = { 'line-color': color, 'line-width': 2 };
+    } else {
+      layerType = 'circle';
+      paint = { 'circle-color': color, 'circle-radius': 5, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' };
+    }
+    if (!map.getLayer(name)) {
+      map.addLayer({ id: name, type: layerType, source: name, 'source-layer': name, paint });
+    }
+    mapLayers[name] = true;
+  } else {
+    if (map.getLayer(name)) map.removeLayer(name);
+    delete mapLayers[name];
+  }
+}
+
+// ─── Stats ───
+async function loadStats() {
+  try {
+    const data = await api('/api/v1/admin/stats');
+    document.getElementById('stat-requests').textContent = (data.usage?.total_requests || 0).toLocaleString();
+    document.getElementById('stat-layers').textContent = data.postgis?.layers || 0;
+    document.getElementById('stat-features').textContent = (data.postgis?.total_features || 0).toLocaleString();
+    document.getElementById('stat-logins').textContent = (data.usage?.total_logins || 0).toLocaleString();
+
+    const activity = document.getElementById('activity-list');
+    activity.innerHTML = '';
+    const recent = data.usage?.recent_activity || [];
+    if (recent.length === 0) {
+      activity.innerHTML = '<p style="color:var(--muted);font-size:.75rem">Sin actividad.</p>';
+      return;
+    }
+    recent.slice(0, 20).forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'activity-item';
+      const time = new Date(a.timestamp).toLocaleTimeString();
+      div.innerHTML = `<span class="time">${time}</span><span>${a.endpoint}</span><span style="color:var(--accent)">${a.user}</span>`;
+      activity.appendChild(div);
+    });
+  } catch(e) { console.error(e); }
+}
+
+// ─── Upload ───
+function fileSelected() {
+  const input = document.getElementById('file-input');
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-size').textContent = `(${(file.size/1024/1024).toFixed(1)} MB)`;
+  document.getElementById('file-info').style.display = 'block';
+  document.getElementById('upload-label').textContent = 'Cambiar archivo';
+  document.getElementById('upload-zone').classList.add('has-file');
+  document.getElementById('upload-status').className = 'status-msg';
+}
+
+async function uploadFile(replace) {
+  const input = document.getElementById('file-input');
+  const file = input.files[0];
+  if (!file) { showStatus('upload-status', 'Selecciona un archivo primero', 'error'); return; }
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['gpkg','geojson','json'].includes(ext)) {
+    showStatus('upload-status', 'Formato no soportado. Usa .gpkg, .geojson o .json', 'error');
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'flex';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const endpoint = replace ? '/api/v1/admin/replace' : '/api/v1/admin/upload';
+    const res = await fetch(`${API}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+      body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    const msg = replace ? 'Datos reemplazados exitosamente' : 'Archivo importado exitosamente';
+    showStatus('upload-status', `${msg}: ${(data.imported||[]).join(', ') || 'sin capas'}`, 'success');
+    input.value = '';
+    document.getElementById('file-info').style.display = 'none';
+    document.getElementById('upload-zone').classList.remove('has-file');
+    document.getElementById('upload-label').textContent = 'Haz clic para seleccionar archivo (GPKG, GeoJSON)';
+    await refreshData();
+  } catch(e) {
+    showStatus('upload-status', `Error: ${e.message}`, 'error');
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+// ─── Scan ───
+async function scanData() {
+  document.getElementById('loading').style.display = 'flex';
+  try {
+    const data = await api('/api/v1/admin/import/scan', { method: 'POST' });
+    let msg = '';
+    if (data.imported_layers?.length) msg += `Importadas: ${data.imported_layers.length} capas. `;
+    if (data.errors?.length) msg += `Errores: ${data.errors.length}`;
+    showStatus('scan-status', msg || 'Sin novedades', data.errors?.length ? 'error' : 'success');
+    await refreshData();
+  } catch(e) {
+    showStatus('scan-status', `Error: ${e.message}`, 'error');
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+// ─── Clear DB ───
+async function clearData() {
+  if (!confirm('¿Estás seguro? Se eliminarán TODAS las capas espaciales de la base de datos.')) return;
+  document.getElementById('loading').style.display = 'flex';
+  try {
+    const data = await api('/api/v1/admin/clear', { method: 'POST' });
+    showStatus('log', `Tablas eliminadas: ${(data.dropped||[]).join(', ')}`, 'success');
+    document.getElementById('log').style.display = 'block';
+    await refreshData();
+  } catch(e) {
+    showStatus('log', `Error: ${e.message}`, 'error');
+    document.getElementById('log').style.display = 'block';
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+// ─── Helpers ───
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+}
+
+function addLog(msg) {
+  const el = document.getElementById('log');
+  const p = document.createElement('div');
+  p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(p);
+  el.style.display = 'block';
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', () => {
+  if (TOKEN) {
+    initDashboard();
+  }
+  document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  document.getElementById('login-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-pass').focus(); });
+});
+</script>
 </body>
 </html>
-

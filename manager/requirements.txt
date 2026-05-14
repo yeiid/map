@@ -13,3 +13,6 @@ python-dotenv
 fiona
 pandas
 pyogrio
+pyjwt
+passlib[bcrypt]
+bcrypt
