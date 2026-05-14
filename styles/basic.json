@@ -1,0 +1,29 @@
+{
+  "version": 8,
+  "name": "NeuralJira Dynamic",
+  "sources": {
+    "martin": {
+      "type": "vector",
+      "url": "http://localhost:3000/geo2"
+    }
+  },
+  "glyphs": "http://localhost:8000/fonts/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#0f172a" }
+    },
+    {
+      "id": "catastro-fill",
+      "type": "fill",
+      "source": "martin",
+      "source-layer": "geo2",
+      "paint": {
+        "fill-color": "#38bdf8",
+        "fill-opacity": 0.5,
+        "fill-outline-color": "#ffffff"
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+services:
+  # 🗄️ Spatial Database (Acceso desde QGIS en puerto 5432)
+  db:
+    image: postgis/postgis:15-3.4
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mapengine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mapengine123}
+      POSTGRES_DB: ${POSTGRES_DB:-mapdb}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - map-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mapengine} -d ${POSTGRES_DB:-mapdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 🗺️ Vector Tile Server (Martin) - Acceso en puerto 3000
+  tiles:
+    image: maplibre/martin:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
+      - MARTIN_LISTEN_ADDRESS=0.0.0.0:3000
+    networks:
+      - map-net
+
+  # 🛠️ Map Manager & Style API - Acceso en puerto 8000
+  manager:
+    build:
+      context: ./manager
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
+      MARTIN_URL: http://tiles:3000
+    volumes:
+      - ./styles:/app/styles
+      - ./fonts:/app/fonts
+      - ./data:/app/data
+    depends_on:
+      - db
+      - tiles
+    networks:
+      - map-net
+
+volumes:
+  db_data:
+
+networks:
+  map-net:
+    driver: bridge

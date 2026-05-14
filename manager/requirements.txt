@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+sqlmodel
+asyncpg
+geopandas
+shapely
+psycopg2-binary
+geoalchemy2
+python-multipart
+aiofiles
+python-dotenv
+fiona
+pandas
+pyogrio

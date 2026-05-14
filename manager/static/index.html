@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralJira Map Engine | Dashboard</title>
+    <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --sidebar-bg: #1e293b;
+            --accent: #38bdf8;
+            --accent-hover: #7dd3fc;
+            --success: #22c55e;
+            --error: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --card-bg: #334155;
+        }
+
+        body { 
+            margin: 0; 
+            display: flex; 
+            height: 100vh; 
+            font-family: 'Inter', sans-serif; 
+            background: var(--bg-dark); 
+            color: var(--text-main); 
+            overflow: hidden;
+        }
+
+        #sidebar { 
+            width: 360px; 
+            padding: 24px; 
+            background: var(--sidebar-bg); 
+            border-right: 1px solid #334155; 
+            overflow-y: auto; 
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+        h1 { font-size: 1.5rem; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+        h1 span { font-size: 0.8rem; background: rgba(56, 189, 248, 0.2); padding: 4px 8px; border-radius: 4px; }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary { background: var(--accent); color: var(--bg-dark); }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        
+        .btn-scan { 
+            background: linear-gradient(135deg, #22c55e, #10b981); 
+            color: white; 
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+        }
+        .btn-scan:hover { filter: brightness(1.1); transform: scale(1.02); }
+
+        .section { 
+            background: var(--card-bg); 
+            padding: 16px; 
+            border-radius: 12px; 
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .section h3 { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; }
+
+        #map { flex: 1; position: relative; }
+
+        .layer-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .layer-item:last-child { border: 0; }
+        
+        .toggle {
+            width: 40px;
+            height: 20px;
+            background: #475569;
+            border-radius: 20px;
+            position: relative;
+            cursor: pointer;
+        }
+        .toggle.active { background: var(--success); }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .toggle.active::after { left: 22px; }
+
+        #loading { 
+            display:none; 
+            position:fixed; 
+            top:0; left:0; 
+            width:100%; height:100%; 
+            background:rgba(15, 23, 42, 0.9); 
+            z-index:1000; 
+            justify-content:center; 
+            align-items:center; 
+            flex-direction:column;
+            backdrop-filter: blur(5px);
+        }
+
+        .loader {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .status-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #1e293b;
+        }
+
+        .error-log {
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: #fca5a5;
+            padding: 10px;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="loader"></div>
+        <p style="margin-top: 20px; font-weight: 600;">Procesando GeoData...</p>
+    </div>
+
+    <div id="sidebar">
+        <h1>NeuralJira Maps <span>v2.0</span></h1>
+        
+        <button class="btn btn-scan" onclick="scanData()">⚡ Escanear Carpeta Data</button>
+
+        <div class="section">
+            <h3>Capas en DB</h3>
+            <div id="layer-list">
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Sin capas cargadas.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Subida Manual</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <input type="file" id="geoFile" style="font-size: 0.8rem; color: var(--text-muted);">
+                <button class="btn btn-primary" onclick="uploadData()">📤 Subir y Procesar</button>
+            </div>
+        </div>
+
+        <div id="scan-report" style="display: none;">
+            <div class="section" style="border: 1px solid var(--error);">
+                <h3 style="color: var(--error);">Errores / Alertas</h3>
+                <div id="error-content" class="error-log"></div>
+            </div>
+        </div>
+
+        <div style="margin-top: auto; font-size: 0.7rem; color: var(--text-muted); line-height: 1.5;">
+            Engine: PostGIS + Martin + FastAPI<br>
+            Ruta Data: <code style="color: var(--accent);">/app/data</code>
+        </div>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                "version": 8,
+                "sources": {
+                    "martin": {
+                        "type": "vector",
+                        "tiles": [location.origin.replace(':8000', ':3000') + "/{table}/{z}/{x}/{y}.pbf"],
+                        "minzoom": 0,
+                        "maxzoom": 22
+                    }
+                },
+                "layers": [
+                    { "id": "background", "type": "background", "paint": { "background-color": "#0f172a" } }
+                ]
+            },
+            center: [-72.92, 11.54],
+            zoom: 10
+        });
+
+        const MARTIN_URL = location.origin.replace(':8000', ':3000');
+
+        async function loadLayers() {
+            try {
+                const res = await fetch('/api/layers');
+                const data = await res.json();
+                const list = document.getElementById('layer-list');
+                list.innerHTML = '';
+                
+                if (data.layers.length === 0) {
+                    list.innerHTML = '<p style="font-size: 0.8rem; color: var(--text-muted);">No hay capas espaciales en PostGIS.</p>';
+                    return;
+                }
+
+                data.layers.forEach(layer => {
+                    const icon = getLayerIcon(layer.type);
+                    const item = document.createElement('div');
+                    item.className = 'layer-item';
+                    item.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size: 0.7rem; opacity:0.6;">${icon}</span>
+                            <span style="font-size: 0.9rem;">${layer.name}</span>
+                        </div>
+                        <div class="toggle" id="toggle-${layer.name}" onclick="toggleLayer('${layer.name}', '${layer.type}')"></div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (err) { console.error(err); }
+        }
+
+        function getLayerIcon(type) {
+            if (type.includes('POLYGON')) return '⬚';
+            if (type.includes('LINE')) return '⌇';
+            if (type.includes('POINT')) return '•';
+            return '◈';
+        }
+
+        function toggleLayer(layerName, type) {
+            const toggle = document.getElementById(`toggle-${layerName}`);
+            const isActive = toggle.classList.toggle('active');
+
+            if (isActive) {
+                if (!map.getSource(layerName)) {
+                    map.addSource(layerName, {
+                        "type": "vector",
+                        "tiles": [`${MARTIN_URL}/${layerName}/{z}/{x}/{y}.pbf`],
+                    });
+                }
+                
+                const color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+                
+                if (type.includes('POLYGON')) {
+                    map.addLayer({
+                        "id": layerName,
+                        "type": "fill",
+                        "source": layerName,
+                        "source-layer": layerName,
+                        "paint": { "fill-color": color, "fill-opacity": 0.6, "fill-outline-color": "#ffffff" }
+                    });
+                } else if (type.includes('LINE')) {
+                    map.addLayer({
+                        "id": layerName,
+                        "type": "line",
+                        "source": layerName,
+                        "source-layer": layerName,
+                        "paint": { "line-color": color, "line-width": 2 }
+                    });
+                } else {
+                    map.addLayer({
+                        "id": layerName,
+                        "type": "circle",
+                        "source": layerName,
+                        "source-layer": layerName,
+                        "paint": { "circle-color": color, "circle-radius": 5, "circle-stroke-width": 1, "circle-stroke-color": "#fff" }
+                    });
+                }
+            } else {
+                if (map.getLayer(layerName)) map.removeLayer(layerName);
+            }
+        }
+
+        async function scanData() {
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('scan-report').style.display = 'none';
+            try {
+                const response = await fetch('/api/scan');
+                const result = await response.json();
+                
+                let reportHtml = '';
+                if (result.errors && result.errors.length > 0) {
+                    reportHtml += `<p style="color:var(--error); font-weight:bold; margin:0 0 5px 0;">Errores:</p>${result.errors.join('<br>')}<br><br>`;
+                }
+                if (result.warnings && result.warnings.length > 0) {
+                    reportHtml += `<p style="color:#fbbf24; font-weight:bold; margin:0 0 5px 0;">Avisos:</p>${result.warnings.join('<br>')}`;
+                }
+                
+                if (reportHtml) {
+                    document.getElementById('scan-report').style.display = 'block';
+                    document.getElementById('error-content').innerHTML = reportHtml;
+                }
+                
+                if (result.imported_layers.length > 0) {
+                    alert("Importadas: " + result.imported_layers.length + " capas.");
+                }
+                loadLayers();
+            } catch (err) { alert("Error de conexión"); }
+            finally { document.getElementById('loading').style.display = 'none'; }
+        }
+
+        async function uploadData() {
+            const file = document.getElementById('geoFile').files[0];
+            if (!file) return alert("Selecciona archivo");
+            const fd = new FormData();
+            fd.append('layer_name', "upload");
+            fd.append('file', file);
+            document.getElementById('loading').style.display = 'flex';
+            try {
+                const response = await fetch('/api/upload', { method: 'POST', body: fd });
+                loadLayers();
+            } catch (err) { alert("Error"); }
+            finally { document.getElementById('loading').style.display = 'none'; }
+        }
+
+        map.on('load', loadLayers);
+    </script>
+</body>
+</html>
+
