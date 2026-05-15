@@ -4,10 +4,9 @@ SRC="data/mapa_guajira.gpkg"
 
 echo "Importando capas desde $SRC a PostGIS..."
 
-# Obtener lista de capas reales (saltando layer_styles)
-layers=$(ogrinfo -so "$SRC" | grep ":" | cut -d":" -f2 | cut -d"(" -f1 | sed 's/^[ \t]*//;s/[ \t]*$//' | grep -v "layer_styles")
-
-for layer in $layers; do
+# Obtener lista de capas reales (saltando layer_styles y la cabecera INFO)
+ogrinfo -so "$SRC" | grep -E '^[0-9]+:' | cut -d":" -f2 | cut -d"(" -f1 | sed 's/^[ \t]*//;s/[ \t]*$//' | grep -v "layer_styles" | while read -r layer; do
+    if [ -z "$layer" ]; then continue; fi
     echo "Procesando capa: $layer"
     ogr2ogr -f PostgreSQL "$DB_CONN" "$SRC" "$layer" \
         -nln "${layer,,}" \
