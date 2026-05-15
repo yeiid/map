@@ -1,0 +1,25 @@
+# Excluir datos pesados (se montan por volúmenes)
+data/
+fonts/
+styles/
+
+# Excluir archivos de sistema y temporales
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.db
+.DS_Store
+
+# Excluir scripts de host
+import_data.sh
+optimize_db.sh
+download_assets.sh
+
+# Excluir archivos de entorno
+.env
+.venv/
+env/
+venv/

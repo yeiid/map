@@ -1,5 +1,5 @@
 services:
-  # 🗄️ Spatial Database (Acceso desde QGIS en puerto 5432)
+  # ─── Spatial Database ────────────────────────────────────────────────────────
   db:
     image: postgis/postgis:15-3.4
     restart: unless-stopped
@@ -9,6 +9,31 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mapengine}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mapengine123}
       POSTGRES_DB: ${POSTGRES_DB:-mapdb}
+      # ✅ Tuning PostgreSQL para datos geoespaciales grandes
+      # Ajusta según RAM real de tu VPS (valores para 4GB RAM)
+      POSTGRES_SHARED_BUFFERS: "1GB"
+      POSTGRES_EFFECTIVE_CACHE_SIZE: "3GB"
+      POSTGRES_WORK_MEM: "64MB"
+      POSTGRES_MAINTENANCE_WORK_MEM: "256MB"
+      POSTGRES_WAL_BUFFERS: "64MB"
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: "0.9"
+      POSTGRES_MIN_WAL_SIZE: "512MB"
+      POSTGRES_MAX_WAL_SIZE: "2GB"
+      POSTGRES_MAX_PARALLEL_WORKERS_PER_GATHER: "2"
+    command: >
+      postgres
+        -c shared_buffers=1GB
+        -c effective_cache_size=3GB
+        -c work_mem=64MB
+        -c maintenance_work_mem=256MB
+        -c wal_buffers=64MB
+        -c checkpoint_completion_target=0.9
+        -c min_wal_size=512MB
+        -c max_wal_size=2GB
+        -c max_parallel_workers_per_gather=2
+        -c random_page_cost=1.1
+        -c enable_partitionwise_aggregate=on
+        -c log_min_duration_statement=1000
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -19,7 +44,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 🗺️ Vector Tile Server (Martin)
+  # ─── Vector Tile Server (Martin) ──────────────────────────────────────────
   tiles:
     image: maplibre/martin:latest
     restart: unless-stopped
@@ -34,25 +59,27 @@ services:
     networks:
       - map-net
 
-  # 🛠️ Map Manager & Style API
+  # ─── Map Manager & Style API ───────────────────────────────────────────────
   manager:
     build:
       context: .
     restart: unless-stopped
-    # Dokploy se encargará del mapeo si usas un dominio para el manager
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       MARTIN_URL: http://tiles:3000
-      PUBLIC_MARTIN_URL: "http://localhost:3010"
+      PUBLIC_MARTIN_URL: ${PUBLIC_MARTIN_URL:-https://tiles.neuraljira.tech}
+      SECRET_KEY: ${SECRET_KEY:-neuraljira-change-this-key-in-production}
     volumes:
       - ./styles:/app/styles
       - ./fonts:/app/fonts
       - ./data:/app/data
     depends_on:
-      - db
-      - tiles
+      db:
+        condition: service_healthy
+      tiles:
+        condition: service_started
     networks:
       - map-net
 

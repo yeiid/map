@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NeuralJira Admin</title>
+<title>NeuralJira Admin — Optimized</title>
 <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
@@ -68,11 +68,23 @@ a{color:var(--accent);text-decoration:none}
 .activity-list{max-height:150px;overflow-y:auto;font-size:.7rem}
 .activity-item{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;gap:8px;color:var(--muted)}
 .activity-item .time{color:var(--muted);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+/* ─── Jobs ─── */
+.job-item{background:rgba(0,0,0,0.2);padding:10px;border-radius:8px;margin-bottom:8px;border:1px solid var(--border)}
+.job-header{display:flex;justify-content:space-between;margin-bottom:6px;font-size:.7rem}
+.job-progress-bg{width:100%;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.job-progress-fill{height:100%;background:var(--accent);transition:width .3s ease}
+.job-msg{font-size:.65rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job-status-badge{font-size:.6rem;padding:2px 6px;border-radius:10px;text-transform:uppercase;font-weight:700}
+.job-status-running{background:rgba(56,189,248,0.2);color:var(--accent)}
+.job-status-done{background:rgba(34,197,94,0.2);color:var(--success)}
+.job-status-error{background:rgba(239,68,68,0.2);color:var(--error)}
+
 /* ─── Loading ─── */
 #loading{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.9);z-index:1000;justify-content:center;align-items:center;flex-direction:column;backdrop-filter:blur(5px)}
 .loader{width:50px;height:50px;border:4px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .8s cubic-bezier(.68,-.55,.27,1.55) infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.status-msg{font-size:.8rem;padding:8px;border-radius:6px;margin-top:8px;display:none}
+.status-msg{font-size:.8rem;padding:8px;border-radius:6px;margin-top:8px;display:none;animation:fadeIn 0.3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .status-msg.success{display:block;background:rgba(34,197,94,0.15);color:var(--success);border:1px solid rgba(34,197,94,0.3)}
 .status-msg.error{display:block;background:rgba(239,68,68,0.15);color:var(--error);border:1px solid rgba(239,68,68,0.3)}
 #log{max-height:120px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#fca5a5;padding:10px;background:rgba(239,68,68,0.1);border-radius:8px;display:none}
@@ -100,7 +112,7 @@ a{color:var(--accent);text-decoration:none}
 
 <div id="loading">
   <div class="loader"></div>
-  <p style="margin-top:16px;font-weight:600;font-size:.9rem">Procesando...</p>
+  <p id="loading-msg" style="margin-top:16px;font-weight:600;font-size:.9rem">Procesando...</p>
 </div>
 
 <div id="dashboard">
@@ -121,7 +133,7 @@ a{color:var(--accent);text-decoration:none}
     </div>
 
     <div class="section">
-      <div class="section-title">📤 Subir GPKG / GeoJSON</div>
+      <div class="section-title">📤 Importar Datos (Asíncrono)</div>
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
         <div style="font-size:1.5rem;margin-bottom:4px">📁</div>
         <p id="upload-label">Haz clic para seleccionar archivo (GPKG, GeoJSON)</p>
@@ -133,9 +145,14 @@ a{color:var(--accent);text-decoration:none}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn-primary" style="flex:1" onclick="uploadFile(false)">Importar</button>
-        <button class="btn btn-warning" style="flex:1" onclick="uploadFile(true)">Reemplazar Todo</button>
+        <button class="btn btn-warning" style="flex:1" onclick="uploadFile(true)">Reemplazar</button>
       </div>
       <div id="upload-status" class="status-msg"></div>
+    </div>
+
+    <div id="jobs-section" class="section" style="display:none">
+      <div class="section-title">⚙️ Tareas en Proceso</div>
+      <div id="jobs-list"></div>
     </div>
 
     <div class="section">
@@ -156,16 +173,14 @@ a{color:var(--accent);text-decoration:none}
     </div>
 
     <div class="section">
-      <div class="section-title">📝 Actividad Reciente</div>
-      <div id="activity-list" class="activity-list">
-        <p style="color:var(--muted);font-size:.75rem">Sin actividad.</p>
-      </div>
+      <div class="section-title">📝 Actividad</div>
+      <div id="activity-list" class="activity-list"></div>
     </div>
 
     <div id="log"></div>
 
     <div style="font-size:.65rem;color:var(--muted);line-height:1.5;margin-top:auto;padding-top:8px">
-      Engine: PostGIS + Martin + FastAPI &bull; <a href="/preview" target="_blank">Vista Pública</a>
+      Engine: PostGIS + Martin + FastAPI v3 &bull; <a href="/preview" target="_blank">Vista Pública</a>
     </div>
   </div>
 
@@ -178,6 +193,8 @@ let TOKEN = localStorage.getItem('nj_token');
 let map = null;
 let mapLayers = {};
 let CONFIG = { martin_url: 'http://localhost:3010' };
+let ACTIVE_JOBS = new Set();
+let FINISHED_JOBS = new Set();
 
 async function api(path, opts = {}) {
   const headers = { ...opts.headers };
@@ -206,7 +223,6 @@ async function doLogin() {
     const data = await res.json();
     TOKEN = data.access_token;
     localStorage.setItem('nj_token', TOKEN);
-    document.getElementById('login-error').style.display = 'none';
     initDashboard();
   } catch(e) {
     document.getElementById('login-error').style.display = 'block';
@@ -216,10 +232,7 @@ async function doLogin() {
 function doLogout() {
   localStorage.removeItem('nj_token');
   TOKEN = null;
-  document.getElementById('dashboard').style.display = 'none';
-  document.getElementById('login-overlay').style.display = 'flex';
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pass').value = '';
+  location.reload();
 }
 
 // ─── Init ───
@@ -246,16 +259,53 @@ async function initDashboard() {
     document.getElementById('username-display').textContent = me.username;
   } catch(e) {}
 
-  try {
-    const cfg = await api('/api/v1/config');
-    CONFIG.martin_url = cfg.martin_url;
-  } catch(e) {}
-
   await refreshData();
+  // Poll jobs frequently
+  setInterval(pollJobs, 2000);
 }
 
 async function refreshData() {
   await Promise.all([loadLayers(), loadStats()]);
+}
+
+// ─── Jobs ───
+async function pollJobs() {
+  try {
+    const data = await api('/api/v1/admin/jobs');
+    const jobs = data.jobs || [];
+    const list = document.getElementById('jobs-list');
+    const container = document.getElementById('jobs-section');
+    
+    if (jobs.length > 0) {
+      container.style.display = 'block';
+      list.innerHTML = '';
+      
+      jobs.sort((a,b) => new Date(b.started_at) - new Date(a.started_at)).slice(0, 5).forEach(job => {
+        const item = document.createElement('div');
+        item.className = 'job-item';
+        item.innerHTML = `
+          <div class="job-header">
+            <span style="font-weight:600;font-size:.65rem">ID: ${job.id.split('-')[0]}</span>
+            <span class="job-status-badge job-status-${job.status}">${job.status}</span>
+          </div>
+          <div class="job-progress-bg">
+            <div class="job-progress-fill" style="width: ${job.progress}%"></div>
+          </div>
+          <div class="job-msg">${job.message} ${job.layer ? `(${job.layer})` : ''}</div>
+        `;
+        list.appendChild(item);
+        
+        if (job.status === 'done' && !FINISHED_JOBS.has(job.id)) {
+          FINISHED_JOBS.add(job.id);
+          refreshData();
+          // Reload style to capture new layers
+          map.setStyle('/api/v1/style.json');
+        }
+      });
+    } else {
+      container.style.display = 'none';
+    }
+  } catch(e) {}
 }
 
 // ─── Layers ───
@@ -265,7 +315,7 @@ async function loadLayers() {
     const list = document.getElementById('layer-list');
     list.innerHTML = '';
     if (!data.layers || data.layers.length === 0) {
-      list.innerHTML = '<p style="color:var(--muted);font-size:.8rem">No hay capas espaciales en PostGIS.</p>';
+      list.innerHTML = '<p style="color:var(--muted);font-size:.8rem">Sin capas cargadas.</p>';
       return;
     }
     data.layers.forEach(layer => {
@@ -276,18 +326,15 @@ async function loadLayers() {
         <div style="display:flex;align-items:center;gap:8px;overflow:hidden">
           <span style="font-size:.7rem;opacity:.6;flex-shrink:0">${icon}</span>
           <div style="overflow:hidden">
-            <div style="font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${layer.name}</div>
-            <div style="font-size:.65rem;color:var(--muted)">${layer.features.toLocaleString()} features</div>
+            <div title="${layer.name}" style="font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${layer.name}</div>
+            <div style="font-size:.65rem;color:var(--muted)">${layer.features.toLocaleString()} feat • ${layer.size || ''}</div>
           </div>
         </div>
-        <div class="toggle" id="toggle-${layer.name}" onclick="toggleLayer('${layer.name}','${layer.type}','${layer.features}')"></div>`;
+        <div class="toggle ${mapLayers[layer.name] ? 'active' : ''}" id="toggle-${layer.name}" onclick="toggleLayer('${layer.name}','${layer.type}','${layer.features}')"></div>`;
       list.appendChild(item);
     });
-    return data;
-  } catch(e) { console.error(e); }
+  } catch(e) {}
 }
-
-function getRandomColor() { return `hsl(${Math.random()*360},70%,60%)`; }
 
 function toggleLayer(name, type, features) {
   const el = document.getElementById(`toggle-${name}`);
@@ -295,24 +342,24 @@ function toggleLayer(name, type, features) {
   features = parseInt(features);
 
   if (on) {
-    if (features > 50000 && !confirm(`Esta capa tiene ${features.toLocaleString()} features. ¿Mostrar de todas formas?`)) {
+    if (features > 200000 && !confirm(`Capa muy pesada (${features.toLocaleString()}). ¿Cargar?`)) {
       el.classList.remove('active');
       return;
     }
     if (!map.getSource(name)) {
       map.addSource(name, { type: 'vector', tiles: [`${CONFIG.martin_url}/${name}/{z}/{x}/{y}.pbf`] });
     }
-    const color = getRandomColor();
+    const color = `hsl(${Math.random()*360},70%,60%)`;
     let layerType, paint;
     if (type.includes('POLYGON')) {
       layerType = 'fill';
-      paint = { 'fill-color': color, 'fill-opacity': 0.5, 'fill-outline-color': '#fff' };
+      paint = { 'fill-color': color, 'fill-opacity': 0.4, 'fill-outline-color': 'rgba(255,255,255,0.2)' };
     } else if (type.includes('LINE')) {
       layerType = 'line';
       paint = { 'line-color': color, 'line-width': 2 };
     } else {
       layerType = 'circle';
-      paint = { 'circle-color': color, 'circle-radius': 5, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' };
+      paint = { 'circle-color': color, 'circle-radius': 4, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' };
     }
     if (!map.getLayer(name)) {
       map.addLayer({ id: name, type: layerType, source: name, 'source-layer': name, paint });
@@ -336,128 +383,82 @@ async function loadStats() {
     const activity = document.getElementById('activity-list');
     activity.innerHTML = '';
     const recent = data.usage?.recent_activity || [];
-    if (recent.length === 0) {
-      activity.innerHTML = '<p style="color:var(--muted);font-size:.75rem">Sin actividad.</p>';
-      return;
-    }
-    recent.slice(0, 20).forEach(a => {
+    recent.slice(0, 10).forEach(a => {
       const div = document.createElement('div');
       div.className = 'activity-item';
       const time = new Date(a.timestamp).toLocaleTimeString();
-      div.innerHTML = `<span class="time">${time}</span><span>${a.endpoint}</span><span style="color:var(--accent)">${a.user}</span>`;
+      div.innerHTML = `<span class="time">${time}</span><span style="flex:1">${a.endpoint}</span><span style="color:var(--accent)">${a.user}</span>`;
       activity.appendChild(div);
     });
-  } catch(e) { console.error(e); }
+  } catch(e) {}
 }
 
-// ─── Upload ───
+// ─── Actions ───
 function fileSelected() {
-  const input = document.getElementById('file-input');
-  const file = input.files[0];
+  const file = document.getElementById('file-input').files[0];
   if (!file) return;
   document.getElementById('file-name').textContent = file.name;
   document.getElementById('file-size').textContent = `(${(file.size/1024/1024).toFixed(1)} MB)`;
   document.getElementById('file-info').style.display = 'block';
-  document.getElementById('upload-label').textContent = 'Cambiar archivo';
   document.getElementById('upload-zone').classList.add('has-file');
-  document.getElementById('upload-status').className = 'status-msg';
 }
 
 async function uploadFile(replace) {
-  const input = document.getElementById('file-input');
-  const file = input.files[0];
-  if (!file) { showStatus('upload-status', 'Selecciona un archivo primero', 'error'); return; }
+  const file = document.getElementById('file-input').files[0];
+  if (!file) return showStatus('upload-status', 'Selecciona un archivo', 'error');
 
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (!['gpkg','geojson','json'].includes(ext)) {
-    showStatus('upload-status', 'Formato no soportado. Usa .gpkg, .geojson o .json', 'error');
-    return;
-  }
-
-  document.getElementById('loading').style.display = 'flex';
+  const fd = new FormData();
+  fd.append('file', file);
+  
+  showStatus('upload-status', 'Subiendo...', 'success');
   try {
-    const fd = new FormData();
-    fd.append('file', file);
-    const endpoint = replace ? '/api/v1/admin/replace' : '/api/v1/admin/upload';
-    const res = await fetch(`${API}${endpoint}`, {
+    const res = await fetch(replace ? '/api/v1/admin/replace' : '/api/v1/admin/upload', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${TOKEN}` },
       body: fd
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Error');
-    const msg = replace ? 'Datos reemplazados exitosamente' : 'Archivo importado exitosamente';
-    showStatus('upload-status', `${msg}: ${(data.imported||[]).join(', ') || 'sin capas'}`, 'success');
-    input.value = '';
+    showStatus('upload-status', 'Job iniciado: ' + data.job_id.split('-')[0], 'success');
     document.getElementById('file-info').style.display = 'none';
     document.getElementById('upload-zone').classList.remove('has-file');
-    document.getElementById('upload-label').textContent = 'Haz clic para seleccionar archivo (GPKG, GeoJSON)';
-    await refreshData();
+    pollJobs(); // Start polling immediately
   } catch(e) {
-    showStatus('upload-status', `Error: ${e.message}`, 'error');
-  } finally {
-    document.getElementById('loading').style.display = 'none';
+    showStatus('upload-status', e.message, 'error');
   }
 }
 
-// ─── Scan ───
 async function scanData() {
-  document.getElementById('loading').style.display = 'flex';
   try {
     const data = await api('/api/v1/admin/import/scan', { method: 'POST' });
-    let msg = '';
-    if (data.imported_layers?.length) msg += `Importadas: ${data.imported_layers.length} capas. `;
-    if (data.errors?.length) msg += `Errores: ${data.errors.length}`;
-    showStatus('scan-status', msg || 'Sin novedades', data.errors?.length ? 'error' : 'success');
-    await refreshData();
+    showStatus('scan-status', 'Escaneo iniciado: ' + data.jobs.length + ' archivos', 'success');
+    pollJobs();
   } catch(e) {
-    showStatus('scan-status', `Error: ${e.message}`, 'error');
-  } finally {
-    document.getElementById('loading').style.display = 'none';
+    showStatus('scan-status', e.message, 'error');
   }
 }
 
-// ─── Clear DB ───
 async function clearData() {
-  if (!confirm('¿Estás seguro? Se eliminarán TODAS las capas espaciales de la base de datos.')) return;
-  document.getElementById('loading').style.display = 'flex';
+  if (!confirm('¿Eliminar TODAS las capas?')) return;
   try {
-    const data = await api('/api/v1/admin/clear', { method: 'POST' });
-    showStatus('log', `Tablas eliminadas: ${(data.dropped||[]).join(', ')}`, 'success');
-    document.getElementById('log').style.display = 'block';
-    await refreshData();
-  } catch(e) {
-    showStatus('log', `Error: ${e.message}`, 'error');
-    document.getElementById('log').style.display = 'block';
-  } finally {
-    document.getElementById('loading').style.display = 'none';
-  }
+    await api('/api/v1/admin/clear', { method: 'POST' });
+    mapLayers = {};
+    refreshData();
+    map.setStyle('/api/v1/style.json');
+  } catch(e) { alert(e.message); }
 }
 
-// ─── Helpers ───
 function showStatus(id, msg, type) {
   const el = document.getElementById(id);
-  if (!el) return;
   el.textContent = msg;
   el.className = `status-msg ${type}`;
-}
-
-function addLog(msg) {
-  const el = document.getElementById('log');
-  const p = document.createElement('div');
-  p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  el.appendChild(p);
   el.style.display = 'block';
-  el.scrollTop = el.scrollHeight;
+  setTimeout(() => { el.style.display = 'none'; }, 6000);
 }
 
-// ─── Init ───
 document.addEventListener('DOMContentLoaded', () => {
-  if (TOKEN) {
-    initDashboard();
-  }
+  if (TOKEN) initDashboard();
   document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  document.getElementById('login-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-pass').focus(); });
 });
 </script>
 </body>
