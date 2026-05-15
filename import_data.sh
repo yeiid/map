@@ -14,7 +14,6 @@ ogrinfo -so "$SRC" | grep -E '^[0-9]+:' | cut -d":" -f2 | cut -d"(" -f1 | sed 's
         -nln "${layer,,}" \
         -nlt PROMOTE_TO_MULTI \
         -lco GEOMETRY_NAME=geometry \
-        -lco FID=fid \
         -lco OVERWRITE=YES \
         -t_srs EPSG:4326 \
         -makevalid \

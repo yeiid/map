@@ -13,7 +13,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 
-SECRET_KEY = os.getenv("SECRET_KEY", "neuraljira-change-this-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "neuraljira-change-this-key-to-32-bytes")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://mapengine:mapengine123@db:5432/mapdb")
