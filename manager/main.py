@@ -19,6 +19,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 480
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://mapengine:mapengine123@db:5432/mapdb")
 SYNC_DB_URL = DATABASE_URL.replace("+asyncpg", "")
 MARTIN_URL = os.getenv("MARTIN_URL", "http://localhost:3000")
+PUBLIC_MARTIN_URL = os.getenv("PUBLIC_MARTIN_URL", "https://tiles.neuraljira.tech")
 
 USERS_PATH = "data/users.json"
 USAGE_PATH = "data/usage.json"
@@ -171,7 +172,7 @@ async def get_style(request: Request):
     engine = create_engine(SYNC_DB_URL)
     host = request.url.hostname
     scheme = request.url.scheme
-    client_martin = f"{scheme}://{host}:3000"
+    client_martin = PUBLIC_MARTIN_URL
     base_url = f"{scheme}://{host}:{request.url.port}"
     style = {
         "version": 8, "name": "NeuralJira 3D Premium",

@@ -19,12 +19,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # 🗺️ Vector Tile Server (Martin) - Acceso en puerto 3000
+  # 🗺️ Vector Tile Server (Martin)
   tiles:
     image: maplibre/martin:latest
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # No exponemos puertos al host porque Dokploy maneja el dominio
     depends_on:
       db:
         condition: service_healthy
@@ -34,16 +33,18 @@ services:
     networks:
       - map-net
 
-  # 🛠️ Map Manager & Style API - Acceso en puerto 8000
+  # 🛠️ Map Manager & Style API
   manager:
     build:
       context: ./manager
     restart: unless-stopped
+    # Dokploy se encargará del mapeo si usas un dominio para el manager
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       MARTIN_URL: http://tiles:3000
+      PUBLIC_MARTIN_URL: "https://tiles.neuraljira.tech"
     volumes:
       - ./styles:/app/styles
       - ./fonts:/app/fonts
