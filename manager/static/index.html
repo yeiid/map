@@ -177,6 +177,7 @@ const API = '';
 let TOKEN = localStorage.getItem('nj_token');
 let map = null;
 let mapLayers = {};
+let CONFIG = { martin_url: 'http://localhost:3010' };
 
 async function api(path, opts = {}) {
   const headers = { ...opts.headers };
@@ -245,6 +246,11 @@ async function initDashboard() {
     document.getElementById('username-display').textContent = me.username;
   } catch(e) {}
 
+  try {
+    const cfg = await api('/api/v1/config');
+    CONFIG.martin_url = cfg.martin_url;
+  } catch(e) {}
+
   await refreshData();
 }
 
@@ -294,7 +300,7 @@ function toggleLayer(name, type, features) {
       return;
     }
     if (!map.getSource(name)) {
-      map.addSource(name, { type: 'vector', tiles: [`https://tiles.neuraljira.tech/${name}/{z}/{x}/{y}.pbf`] });
+      map.addSource(name, { type: 'vector', tiles: [`${CONFIG.martin_url}/${name}/{z}/{x}/{y}.pbf`] });
     }
     const color = getRandomColor();
     let layerType, paint;

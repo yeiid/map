@@ -167,6 +167,10 @@ async def preview():
 <body><div class=overlay><h2>NeuralJira MaaS</h2><p>Infraestructura Vectorial de Alta Precisión.</p><div class=badge>Motor 3D Activo</div><br><a href=/admin style=display:inline-block;margin-top:12px;color:#38bdf8;font-size:12px>Panel Admin →</a></div><div id=map></div>
 <script>const map=new maplibregl.Map({container:'map',style:'/api/v1/style.json',center:[-72.92,11.54],zoom:16,pitch:45,bearing:-17,antialias:true,hash:true});map.addControl(new maplibregl.NavigationControl({visualizePitch:true}));map.addControl(new maplibregl.FullscreenControl());map.on('load',()=>{map.setLight({anchor:'viewport',color:'white',intensity:.4})});</script></body></html>""")
 
+@app.get("/api/v1/config")
+async def get_config():
+    return {"martin_url": PUBLIC_MARTIN_URL}
+
 @app.get("/api/v1/style.json")
 async def get_style(request: Request):
     engine = create_engine(SYNC_DB_URL)

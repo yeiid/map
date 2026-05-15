@@ -23,7 +23,8 @@ services:
   tiles:
     image: maplibre/martin:latest
     restart: unless-stopped
-    # No exponemos puertos al host porque Dokploy maneja el dominio
+    ports:
+      - "3010:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -44,7 +45,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       MARTIN_URL: http://tiles:3000
-      PUBLIC_MARTIN_URL: "https://tiles.neuraljira.tech"
+      PUBLIC_MARTIN_URL: "http://localhost:3010"
     volumes:
       - ./styles:/app/styles
       - ./fonts:/app/fonts

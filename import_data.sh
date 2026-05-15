@@ -11,7 +11,6 @@ ogrinfo -so "$SRC" | grep -E '^[0-9]+:' | cut -d":" -f2 | cut -d"(" -f1 | sed 's
     ogr2ogr -f PostgreSQL "$DB_CONN" "$SRC" "$layer" \
         -progress \
         --config PG_USE_COPY YES \
-        -gt 100000 \
         -nln "${layer,,}" \
         -nlt PROMOTE_TO_MULTI \
         -lco GEOMETRY_NAME=geometry \

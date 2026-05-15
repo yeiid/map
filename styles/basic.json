@@ -4,7 +4,7 @@
   "sources": {
     "martin": {
       "type": "vector",
-      "url": "https://tiles.neuraljira.tech/geo2"
+      "url": "http://localhost:3010/geo2"
     }
   },
   "glyphs": "http://localhost:8000/fonts/{fontstack}/{range}.pbf",
