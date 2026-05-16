@@ -43,8 +43,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       - MARTIN_LISTEN_ADDRESS=0.0.0.0:3000
       - MARTIN_CORS_ORIGIN=*
-    ports:
-      - "${MARTIN_PORT:-3000}:3000"
+    # Puertos internos; se accede vía gateway:80/tiles
     networks:
       - map-net
 
@@ -68,8 +67,7 @@ services:
         condition: service_healthy
       tiles:
         condition: service_started
-    ports:
-      - "${MANAGER_PORT:-8000}:8000"
+    # Puertos internos; se accede vía gateway:80
     networks:
       - map-net
 
