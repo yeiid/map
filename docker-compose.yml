@@ -2,38 +2,25 @@ services:
   # ─── Spatial Database ────────────────────────────────────────────────────────
   db:
     image: postgis/postgis:15-3.4
+    container_name: map-db
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${DB_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mapengine}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mapengine123}
       POSTGRES_DB: ${POSTGRES_DB:-mapdb}
-      # ✅ Tuning PostgreSQL para datos geoespaciales grandes
-      # Ajusta según RAM real de tu VPS (valores para 4GB RAM)
-      POSTGRES_SHARED_BUFFERS: "1GB"
-      POSTGRES_EFFECTIVE_CACHE_SIZE: "3GB"
-      POSTGRES_WORK_MEM: "64MB"
-      POSTGRES_MAINTENANCE_WORK_MEM: "256MB"
-      POSTGRES_WAL_BUFFERS: "64MB"
-      POSTGRES_CHECKPOINT_COMPLETION_TARGET: "0.9"
-      POSTGRES_MIN_WAL_SIZE: "512MB"
-      POSTGRES_MAX_WAL_SIZE: "2GB"
-      POSTGRES_MAX_PARALLEL_WORKERS_PER_GATHER: "2"
     command: >
       postgres
-        -c shared_buffers=1GB
-        -c effective_cache_size=3GB
-        -c work_mem=64MB
-        -c maintenance_work_mem=256MB
-        -c wal_buffers=64MB
-        -c checkpoint_completion_target=0.9
-        -c min_wal_size=512MB
-        -c max_wal_size=2GB
-        -c max_parallel_workers_per_gather=2
+        -c shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+        -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1536MB}
+        -c work_mem=${PG_WORK_MEM:-32MB}
+        -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-128MB}
         -c random_page_cost=1.1
-        -c enable_partitionwise_aggregate=on
-        -c log_min_duration_statement=1000
+        -c max_wal_size=2GB
+        -c min_wal_size=512MB
+        -c checkpoint_completion_target=0.9
+        -c log_min_duration_statement=2000
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -47,15 +34,17 @@ services:
   # ─── Vector Tile Server (Martin) ──────────────────────────────────────────
   tiles:
     image: maplibre/martin:latest
+    container_name: map-tiles
     restart: unless-stopped
-    ports:
-      - "3010:3000"
     depends_on:
       db:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       - MARTIN_LISTEN_ADDRESS=0.0.0.0:3000
+      - MARTIN_CORS_ORIGIN=*
+    ports:
+      - "${MARTIN_PORT:-3000}:3000"
     networks:
       - map-net
 
@@ -63,14 +52,13 @@ services:
   manager:
     build:
       context: .
+    container_name: map-manager
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       MARTIN_URL: http://tiles:3000
-      PUBLIC_MARTIN_URL: ${PUBLIC_MARTIN_URL:-https://tiles.neuraljira.tech}
-      SECRET_KEY: ${SECRET_KEY:-neuraljira-change-this-key-in-production}
+      PUBLIC_MARTIN_URL: ${PUBLIC_MARTIN_URL}
+      SECRET_KEY: ${SECRET_KEY}
     volumes:
       - ./styles:/app/styles
       - ./fonts:/app/fonts
@@ -80,6 +68,23 @@ services:
         condition: service_healthy
       tiles:
         condition: service_started
+    ports:
+      - "${MANAGER_PORT:-8000}:8000"
+    networks:
+      - map-net
+
+  # ─── Reverse Proxy (The Efficiency Layer) ─────────────────────────────────
+  gateway:
+    image: nginx:alpine
+    container_name: map-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - manager
+      - tiles
     networks:
       - map-net
 

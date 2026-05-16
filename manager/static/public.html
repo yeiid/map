@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuralJira Map</title>
+<script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+:root{--bg:#0f172a;--sidebar:#1e293b;--accent:#38bdf8;--success:#22c55e;--error:#ef4444;--warning:#f59e0b;--text:#f8fafc;--muted:#94a3b8;--card:#334155;--border:rgba(255,255,255,0.08)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+#map{width:100%;height:100%}
+.control-panel{position:absolute;top:10px;left:10px;z-index:10;display:flex;flex-direction:column;gap:8px;max-width:320px}
+.panel{background:rgba(15,23,42,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font-size:.8rem}
+.panel-title{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;font-weight:600}
+.btn{padding:8px 14px;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:all .15s;font-size:.78rem;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{filter:brightness(1.1)}
+.btn-danger{background:var(--error);color:#fff}
+.btn-danger:hover{filter:brightness(1.1)}
+.btn-outline{background:transparent;border:1px solid #475569;color:var(--text)}
+.btn-outline:hover{background:rgba(255,255,255,0.06)}
+.btn-sm{padding:5px 10px;font-size:.7rem}
+input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #475569;background:var(--bg);color:var(--text);font-size:.78rem;outline:none;transition:.15s}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,189,248,0.2)}
+.row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.row label{font-size:.72rem;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.flex{display:flex;gap:6px}
+.flex-1{flex:1}
+.gap-4{gap:4px}
+.mt-8{margin-top:8px}
+.mb-8{margin-bottom:8px}
+.text-muted{color:var(--muted);font-size:.72rem}
+.text-success{color:var(--success)}
+.text-error{color:var(--error)}
+.text-accent{color:var(--accent)}
+.coord-list{max-height:180px;overflow-y:auto;font-size:.7rem;font-family:monospace}
+.coord-item{padding:3px 6px;border-radius:4px;cursor:pointer;display:flex;gap:6px;align-items:center}
+.coord-item:hover{background:rgba(56,189,248,0.1)}
+.coord-idx{color:var(--muted);min-width:20px}
+.coord-delete{color:var(--error);cursor:pointer;opacity:.6;font-size:.6rem}
+.coord-delete:hover{opacity:1}
+.layer-item{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.75rem}
+.layer-item:last-child{border:0}
+.toggle{width:32px;height:16px;background:#475569;border-radius:16px;position:relative;cursor:pointer;flex-shrink:0;transition:.2s}
+.toggle.active{background:var(--success)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;background:#fff;border-radius:50%;transition:.2s}
+.toggle.active::after{left:18px}
+.draw-tools{display:flex;gap:4px;flex-wrap:wrap}
+.draw-btn{padding:6px 10px;border:1px solid #475569;border-radius:6px;background:transparent;color:var(--text);cursor:pointer;font-size:.7rem;transition:.15s}
+.draw-btn.active,.draw-btn:hover{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.status-msg{padding:6px 10px;border-radius:6px;font-size:.72rem;display:none;margin-top:6px}
+.status-msg.success{display:block;background:rgba(34,197,94,0.15);color:var(--success);border:1px solid rgba(34,197,94,0.25)}
+.status-msg.error{display:block;background:rgba(239,68,68,0.15);color:var(--error);border:1px solid rgba(239,68,68,0.25)}
+#coords-text{width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid #475569;background:var(--bg);color:var(--text);font-family:monospace;font-size:.72rem;resize:vertical;outline:none}
+#coords-text:focus{border-color:var(--accent)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#475569;border-radius:4px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="control-panel" id="panel-container">
+  <div class="panel">
+    <div class="panel-title">🗺️ NeuralJira Map</div>
+    <div class="flex gap-4">
+      <button class="btn btn-outline btn-sm flex-1" onclick="reloadStyle()">🔄 Recargar</button>
+      <button class="btn btn-outline btn-sm flex-1" onclick="togglePanel('layers-panel')">📋 Capas</button>
+      <button class="btn btn-outline btn-sm flex-1" onclick="togglePanel('coord-panel')">📍 Coordenadas</button>
+    </div>
+  </div>
+
+  <div class="panel" id="coord-panel" style="display:none">
+    <div class="panel-title">📍 Trazar Coordenadas</div>
+    <div class="row">
+      <label>Lng:</label>
+      <input type="number" id="c-lng" step="any" placeholder="-72.92" style="flex:1">
+    </div>
+    <div class="row">
+      <label>Lat:</label>
+      <input type="number" id="c-lat" step="any" placeholder="11.54" style="flex:1">
+    </div>
+    <div class="flex gap-4 mb-8">
+      <button class="btn btn-primary btn-sm flex-1" onclick="addCoordPoint()">➕ Agregar Punto</button>
+      <button class="btn btn-success btn-sm flex-1" onclick="flyToCoord()">📍 Ir</button>
+    </div>
+
+    <div class="panel-title" style="margin-top:8px">O pegar coordenadas (lng lat)</div>
+    <textarea id="coords-text" placeholder="-72.7505 11.0619&#10;-72.7528 11.0631&#10;-72.7555 11.0647"></textarea>
+    <div class="flex gap-4 mt-8">
+      <button class="btn btn-primary btn-sm flex-1" onclick="plotCoordsText()">📌 Graficar</button>
+      <button class="btn btn-outline btn-sm flex-1" onclick="clearPlotted()">🗑️ Limpiar</button>
+    </div>
+    <div class="flex gap-4 mt-8">
+      <button class="draw-btn flex-1" id="draw-point" onclick="setDrawMode('point')">Punto</button>
+      <button class="draw-btn flex-1" id="draw-line" onclick="setDrawMode('line')">Línea</button>
+      <button class="draw-btn flex-1" id="draw-polygon" onclick="setDrawMode('polygon')">Polígono</button>
+      <button class="draw-btn flex-1" id="draw-none" onclick="setDrawMode(null)">✋</button>
+    </div>
+    <div id="plotted-info" class="status-msg"></div>
+    <div id="coord-list-container" style="display:none" class="mt-8">
+      <div class="panel-title">Coordenadas <span id="coord-count" class="text-muted">(0)</span></div>
+      <div id="coord-list" class="coord-list"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="layers-panel" style="display:none">
+    <div class="panel-title">📋 Capas</div>
+    <div id="layer-list">
+      <span class="text-muted">Cargando...</span>
+    </div>
+    <div class="flex gap-4 mt-8">
+      <button class="btn btn-outline btn-sm flex-1" onclick="toggleAllLayers(true)">Mostrar todo</button>
+      <button class="btn btn-outline btn-sm flex-1" onclick="toggleAllLayers(false)">Ocultar todo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: '/api/v1/style.json',
+  center: [-72.77, 11.07],
+  zoom: 14,
+  pitch: 45,
+  antialias: true
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+
+let plottedSource = null;
+let plottedCount = 0;
+let drawMode = null;
+let drawPoints = [];
+let drawSource = null;
+let activeDrawLayer = null;
+let layerStates = {};
+
+map.on('load', () => {
+  loadLayerList();
+  initDrawSource();
+  initPlottedSource();
+});
+
+map.on('click', (e) => {
+  if (drawMode) {
+    const lng = e.lngLat.lng;
+    const lat = e.lngLat.lat;
+    document.getElementById('c-lng').value = lng.toFixed(6);
+    document.getElementById('c-lat').value = lat.toFixed(6);
+    if (drawMode === 'point') {
+      addCoordPoint();
+    } else {
+      drawPoints.push([lng, lat]);
+      updateDrawPreview();
+    }
+  }
+});
+
+map.on('dblclick', (e) => {
+  if (drawMode === 'line' && drawPoints.length >= 2) {
+    finishDrawLine();
+    e.originalEvent.preventDefault();
+  } else if (drawMode === 'polygon' && drawPoints.length >= 3) {
+    finishDrawPolygon();
+    e.originalEvent.preventDefault();
+  }
+});
+
+function togglePanel(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function reloadStyle() {
+  plottedSource = null;
+  plottedCount = 0;
+  map.setStyle('/api/v1/style.json');
+  map.once('style.load', () => {
+    loadLayerList();
+    initDrawSource();
+    showInfo('plotted-info', 'Mapa recargado', 'success');
+  });
+}
+
+function showInfo(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+// ─── Layer Controls ───
+
+async function loadLayerList() {
+  try {
+    const data = await fetch('/api/v1/layers').then(r => r.json());
+    const list = document.getElementById('layer-list');
+    list.innerHTML = '';
+    if (!data.layers || data.layers.length === 0) {
+      list.innerHTML = '<span class="text-muted">Sin capas cargadas.</span>';
+      return;
+    }
+    const styleLayers = map.getStyle().layers || [];
+    data.layers.forEach(layer => {
+      const hasStyleLayer = styleLayers.some(l => l.id.startsWith(layer.name + '-'));
+      if (layerStates[layer.name] === undefined) layerStates[layer.name] = hasStyleLayer;
+      const icon = layer.type.includes('POLYGON') || layer.type === 'GEOMETRY' ? '⬚' : layer.type.includes('LINE') ? '⌇' : '•';
+      const item = document.createElement('div');
+      item.className = 'layer-item';
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;flex:1">
+          <span style="opacity:.5">${icon}</span>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${layer.name}">${layer.name}</span>
+          <span class="text-muted" style="font-size:.65rem">${layer.features.toLocaleString()}</span>
+        </div>
+        <div class="toggle ${layerStates[layer.name] ? 'active' : ''}" data-layer="${layer.name}"></div>`;
+      list.appendChild(item);
+      item.querySelector('.toggle').addEventListener('click', function() {
+        toggleLayer(this.dataset.layer, this);
+      });
+    });
+  } catch(e) {
+    document.getElementById('layer-list').innerHTML = '<span class="text-error">Error cargando capas</span>';
+  }
+}
+
+function toggleLayer(name, el) {
+  const on = el.classList.toggle('active');
+  layerStates[name] = on;
+  const styleLayers = map.getStyle().layers || [];
+  const layerIds = styleLayers
+    .filter(l => l.id.startsWith(name + '-') || l.id === name)
+    .map(l => l.id);
+
+  if (on) {
+    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
+  } else {
+    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'none'));
+  }
+}
+
+function toggleAllLayers(show) {
+  document.querySelectorAll('.toggle').forEach(el => {
+    const name = el.dataset.layer;
+    if (show && !el.classList.contains('active')) {
+      el.classList.add('active');
+      toggleLayer(name, el);
+    } else if (!show && el.classList.contains('active')) {
+      el.classList.remove('active');
+      toggleLayer(name, el);
+    }
+  });
+}
+
+// ─── Coordinate Plotting ───
+
+function addCoordPoint() {
+  const lng = parseFloat(document.getElementById('c-lng').value);
+  const lat = parseFloat(document.getElementById('c-lat').value);
+  if (isNaN(lng) || isNaN(lat)) {
+    showInfo('plotted-info', 'Ingresa longitud y latitud válidas', 'error');
+    return;
+  }
+  if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+    showInfo('plotted-info', 'Coordenadas fuera de rango', 'error');
+    return;
+  }
+  addToPlotted(lng, lat);
+  document.getElementById('c-lng').value = '';
+  document.getElementById('c-lat').value = '';
+}
+
+function addToPlotted(lng, lat) {
+  plottedCount++;
+  const features = map.getSource('plotted-points')?._data?.features || [];
+  features.push({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { id: plottedCount, lng: lng.toFixed(6), lat: lat.toFixed(6) }
+  });
+  updatePlottedSource(features);
+  updateCoordList();
+  showInfo('plotted-info', `Punto ${plottedCount}: ${lng.toFixed(6)}, ${lat.toFixed(6)}`, 'success');
+}
+
+function plotCoordsText() {
+  const text = document.getElementById('coords-text').value.trim();
+  if (!text) { showInfo('plotted-info', 'Pega coordenadas primero', 'error'); return; }
+  const lines = text.split('\n').filter(l => l.trim());
+  const features = map.getSource('plotted-points')?._data?.features || [];
+  let added = 0;
+  lines.forEach(line => {
+    const parts = line.trim().split(/[\s,]+/);
+    if (parts.length >= 2) {
+      const lng = parseFloat(parts[0]);
+      const lat = parseFloat(parts[1]);
+      if (!isNaN(lng) && !isNaN(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+        plottedCount++;
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [lng, lat] },
+          properties: { id: plottedCount, lng: lng.toFixed(6), lat: lat.toFixed(6) }
+        });
+        added++;
+      }
+    }
+  });
+  if (added > 0) {
+    updatePlottedSource(features);
+    updateCoordList();
+    if (features.length > 0) {
+      const coords = features.map(f => f.geometry.coordinates);
+      map.fitBounds(coords.reduce((b, c) => [[Math.min(b[0][0], c[0]), Math.min(b[0][1], c[1])], [Math.max(b[1][0], c[0]), Math.max(b[1][1], c[1])]], [[coords[0][0], coords[0][1]], [coords[0][0], coords[0][1]]]), { padding: 50, maxZoom: 16 });
+    }
+    showInfo('plotted-info', `${added} puntos graficados`, 'success');
+  } else {
+    showInfo('plotted-info', 'No se encontraron coordenadas válidas', 'error');
+  }
+}
+
+function flyToCoord() {
+  const lng = parseFloat(document.getElementById('c-lng').value);
+  const lat = parseFloat(document.getElementById('c-lat').value);
+  if (!isNaN(lng) && !isNaN(lat)) {
+    map.flyTo({ center: [lng, lat], zoom: 16 });
+  }
+}
+
+function initPlottedSource() {
+  if (map.getSource('plotted-points')) return;
+  map.addSource('plotted-points', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+  map.addLayer({
+    id: 'plotted-points-layer',
+    type: 'circle',
+    source: 'plotted-points',
+    paint: {
+      'circle-color': '#ef4444',
+      'circle-radius': 6,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff',
+      'circle-opacity': 0.9
+    }
+  });
+  map.addLayer({
+    id: 'plotted-points-label',
+    type: 'symbol',
+    source: 'plotted-points',
+    layout: {
+      'text-field': ['get', 'id'],
+      'text-size': 10,
+      'text-offset': [0, -1.5],
+      'text-font': ['Open Sans Regular']
+    },
+    paint: {
+      'text-color': '#fff',
+      'text-halo-color': '#000',
+      'text-halo-width': 1
+    }
+  });
+}
+
+function updatePlottedSource(features) {
+  if (!map.getSource('plotted-points')) {
+    initPlottedSource();
+  }
+  map.getSource('plotted-points').setData({
+    type: 'FeatureCollection',
+    features: features
+  });
+}
+
+function updateCoordList() {
+  const container = document.getElementById('coord-list-container');
+  const list = document.getElementById('coord-list');
+  const count = document.getElementById('coord-count');
+  const source = map.getSource('plotted-points');
+  if (!source) { container.style.display = 'none'; return; }
+  const features = source._data?.features || [];
+  container.style.display = features.length > 0 ? 'block' : 'none';
+  count.textContent = `(${features.length})`;
+  list.innerHTML = '';
+  features.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'coord-item';
+    item.innerHTML = `
+      <span class="coord-idx">#${f.properties.id}</span>
+      <span style="flex:1">${f.properties.lng}, ${f.properties.lat}</span>
+      <span class="coord-delete" onclick="removeCoord(${i})">✕</span>`;
+    item.addEventListener('click', () => {
+      map.flyTo({ center: [f.geometry.coordinates[0], f.geometry.coordinates[1]], zoom: 17 });
+    });
+    list.appendChild(item);
+  });
+}
+
+function removeCoord(idx) {
+  const source = map.getSource('plotted-points');
+  if (!source) return;
+  const features = source._data?.features || [];
+  features.splice(idx, 1);
+  updatePlottedSource(features);
+  updateCoordList();
+}
+
+function clearPlotted() {
+  if (!map.getSource('plotted-points')) return;
+  updatePlottedSource([]);
+  plottedCount = 0;
+  drawPoints = [];
+  updateCoordList();
+  if (activeDrawLayer) {
+    if (map.getLayer(activeDrawLayer)) map.removeLayer(activeDrawLayer);
+    if (map.getSource(activeDrawLayer)) map.removeSource(activeDrawLayer);
+    activeDrawLayer = null;
+  }
+  document.getElementById('coords-text').value = '';
+  showInfo('plotted-info', 'Todo limpiado', 'success');
+}
+
+// ─── Drawing Tools ───
+
+function initDrawSource() {
+  if (map.getSource('draw-preview')) return;
+  drawSource = {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  };
+  map.addSource('draw-preview', drawSource);
+}
+
+function setDrawMode(mode) {
+  drawMode = mode;
+  drawPoints = [];
+  document.querySelectorAll('.draw-btn').forEach(b => b.classList.remove('active'));
+  if (mode) {
+    document.getElementById(`draw-${mode}`).classList.add('active');
+    clearDrawPreview();
+  }
+  map.getCanvas().style.cursor = mode ? 'crosshair' : '';
+}
+
+function updateDrawPreview() {
+  if (!map.getSource('draw-preview')) return;
+  const features = [];
+  if (drawPoints.length > 0) {
+    if (drawMode === 'line') {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: drawPoints },
+        properties: {}
+      });
+    } else if (drawMode === 'polygon') {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [drawPoints] },
+        properties: {}
+      });
+    }
+    drawPoints.forEach((p, i) => {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: p },
+        properties: { id: i + 1 }
+      });
+    });
+  }
+  map.getSource('draw-preview').setData({ type: 'FeatureCollection', features });
+  ensureDrawLayers();
+}
+
+function ensureDrawLayers() {
+  if (!map.getLayer('draw-line-fill')) {
+    map.addLayer({
+      id: 'draw-line-fill',
+      type: 'fill',
+      source: 'draw-preview',
+      filter: ['==', '$type', 'Polygon'],
+      paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.2 }
+    });
+  }
+  if (!map.getLayer('draw-line')) {
+    map.addLayer({
+      id: 'draw-line',
+      type: 'line',
+      source: 'draw-preview',
+      filter: ['==', '$type', 'LineString'],
+      paint: { 'line-color': '#38bdf8', 'line-width': 2, 'line-dasharray': [2, 1] }
+    });
+  }
+  if (!map.getLayer('draw-points')) {
+    map.addLayer({
+      id: 'draw-points',
+      type: 'circle',
+      source: 'draw-preview',
+      filter: ['==', '$type', 'Point'],
+      paint: { 'circle-color': '#38bdf8', 'circle-radius': 4, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' }
+    });
+  }
+}
+
+function finishDrawLine() {
+  if (drawPoints.length < 2) return;
+  const coords = drawPoints.map(p => p.map(c => c.toFixed(6)).join(' ')).join(', ');
+  const id = `drawn-line-${Date.now()}`;
+  if (!map.getSource(id)) {
+    map.addSource(id, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: drawPoints },
+        properties: {}
+      }
+    });
+    map.addLayer({
+      id, type: 'line', source: id,
+      paint: { 'line-color': '#22c55e', 'line-width': 2.5, 'line-opacity': 0.9 }
+    });
+  }
+  activeDrawLayer = id;
+  drawPoints = [];
+  clearDrawPreview();
+  document.getElementById('coords-text').value += coords + '\n';
+  showInfo('plotted-info', 'Línea trazada. Coordenadas copiadas.', 'success');
+}
+
+function finishDrawPolygon() {
+  if (drawPoints.length < 3) return;
+  const coords = drawPoints.map(p => p.map(c => c.toFixed(6)).join(' ')).join(', ');
+  const id = `drawn-polygon-${Date.now()}`;
+  if (!map.getSource(id)) {
+    map.addSource(id, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [drawPoints] },
+        properties: {}
+      }
+    });
+    map.addLayer({
+      id, type: 'fill', source: id,
+      paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.3, 'fill-outline-color': '#22c55e' }
+    });
+  }
+  activeDrawLayer = id;
+  drawPoints = [];
+  clearDrawPreview();
+  document.getElementById('coords-text').value += coords + '\n';
+  showInfo('plotted-info', 'Polígono trazado. Coordenadas copiadas.', 'success');
+}
+
+function clearDrawPreview() {
+  if (map.getSource('draw-preview')) {
+    map.getSource('draw-preview').setData({ type: 'FeatureCollection', features: [] });
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'c-lng' || document.activeElement?.id === 'c-lat') {
+    addCoordPoint();
+  }
+  if (e.key === 'Escape') {
+    drawPoints = [];
+    clearDrawPreview();
+    setDrawMode(null);
+  }
+});
+
+
+</script>
+</body>
+</html>

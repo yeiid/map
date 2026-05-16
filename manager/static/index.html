@@ -138,14 +138,20 @@ a{color:var(--accent);text-decoration:none}
         <div style="font-size:1.5rem;margin-bottom:4px">📁</div>
         <p id="upload-label">Haz clic para seleccionar archivo (GPKG, GeoJSON)</p>
       </div>
-      <input type="file" id="file-input" accept=".gpkg,.geojson,.json" style="display:none" onchange="fileSelected()">
+      <input type="file" id="file-input" accept=".gpkg,.geojson,.json,.dxf" style="display:none" onchange="fileSelected()">
       <div id="file-info" style="display:none;margin-top:8px">
         <span class="file-name" id="file-name"></span>
         <span style="font-size:.75rem;color:var(--muted)" id="file-size"></span>
       </div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="btn btn-primary" style="flex:1" onclick="uploadFile(false)">Importar</button>
-        <button class="btn btn-warning" style="flex:1" onclick="uploadFile(true)">Reemplazar</button>
+      <div style="margin-top:10px">
+        <select id="import-mode" class="btn btn-outline" style="width:100%;margin-bottom:8px;padding:8px">
+          <option value="replace">Modo: Reemplazar (Limpiar capa)</option>
+          <option value="append">Modo: Incremental (Añadir a capa)</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" onclick="uploadFile(false)">🚀 Importar</button>
+        <button class="btn btn-danger" style="flex:1" onclick="uploadFile(true)">⚠️ Reemplazar Todo</button>
       </div>
       <div id="upload-status" class="status-msg"></div>
     </div>
@@ -157,7 +163,10 @@ a{color:var(--accent);text-decoration:none}
 
     <div class="section">
       <div class="section-title">⚡ Acciones</div>
-      <button class="btn btn-scan" onclick="scanData()">Escanear Carpeta Data</button>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-scan" style="flex:2" onclick="scanData(false)">Escanear Carpeta Data</button>
+        <button class="btn btn-warning btn-sm" style="flex:1" onclick="scanData(true)" title="Forzar re-importación de todo">Forzar</button>
+      </div>
       <div id="scan-status" class="status-msg"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-outline btn-sm" onclick="refreshData()" style="flex:1">🔄 Refrescar</button>
@@ -192,7 +201,7 @@ const API = '';
 let TOKEN = localStorage.getItem('nj_token');
 let map = null;
 let mapLayers = {};
-let CONFIG = { martin_url: 'http://localhost:3010' };
+let CONFIG = { martin_url: '' };
 let ACTIVE_JOBS = new Set();
 let FINISHED_JOBS = new Set();
 
@@ -240,11 +249,15 @@ async function initDashboard() {
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('dashboard').style.display = 'flex';
 
-  if (!map) {
+    try {
+      CONFIG = await api('/api/v1/config');
+    } catch(e) {}
+
+    if (!map) {
     map = new maplibregl.Map({
       container: 'map',
       style: '/api/v1/style.json',
-      center: [-72.92, 11.54],
+      center: [-72.77, 11.07],
       zoom: 10,
       pitch: 45,
       bearing: -17,
@@ -321,7 +334,7 @@ async function loadLayers() {
     data.layers.forEach(layer => {
       const item = document.createElement('div');
       item.className = 'layer-item';
-      const icon = layer.type.includes('POLYGON') ? '⬚' : layer.type.includes('LINE') ? '⌇' : layer.type.includes('POINT') ? '•' : '◈';
+      const icon = (layer.type.includes('POLYGON') || layer.type === 'GEOMETRY') ? '⬚' : layer.type.includes('LINE') ? '⌇' : layer.type.includes('POINT') ? '•' : '◈';
       item.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;overflow:hidden">
           <span style="font-size:.7rem;opacity:.6;flex-shrink:0">${icon}</span>
@@ -347,11 +360,15 @@ function toggleLayer(name, type, features) {
       return;
     }
     if (!map.getSource(name)) {
-      map.addSource(name, { type: 'vector', tiles: [`${CONFIG.martin_url}/${name}/{z}/{x}/{y}.pbf`] });
+      const baseUrl = CONFIG.martin_url.endsWith('/') ? CONFIG.martin_url.slice(0, -1) : CONFIG.martin_url;
+      map.addSource(name, { 
+        type: 'vector', 
+        tiles: [`${baseUrl}/${name}/{z}/{x}/{y}`] 
+      });
     }
     const color = `hsl(${Math.random()*360},70%,60%)`;
     let layerType, paint;
-    if (type.includes('POLYGON')) {
+    if (type.includes('POLYGON') || type === 'GEOMETRY') {
       layerType = 'fill';
       paint = { 'fill-color': color, 'fill-opacity': 0.4, 'fill-outline-color': 'rgba(255,255,255,0.2)' };
     } else if (type.includes('LINE')) {
@@ -407,12 +424,13 @@ async function uploadFile(replace) {
   const file = document.getElementById('file-input').files[0];
   if (!file) return showStatus('upload-status', 'Selecciona un archivo', 'error');
 
+  const mode = document.getElementById('import-mode').value;
   const fd = new FormData();
   fd.append('file', file);
   
-  showStatus('upload-status', 'Subiendo...', 'success');
+  showStatus('upload-status', `Subiendo en modo ${mode}...`, 'success');
   try {
-    const res = await fetch(replace ? '/api/v1/admin/replace' : '/api/v1/admin/upload', {
+    const res = await fetch(replace ? '/api/v1/admin/replace' : `/api/v1/admin/upload?mode=${mode}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${TOKEN}` },
       body: fd
@@ -428,10 +446,11 @@ async function uploadFile(replace) {
   }
 }
 
-async function scanData() {
+async function scanData(force = false) {
+  const mode = document.getElementById('import-mode').value;
   try {
-    const data = await api('/api/v1/admin/import/scan', { method: 'POST' });
-    showStatus('scan-status', 'Escaneo iniciado: ' + data.jobs.length + ' archivos', 'success');
+    const data = await api(`/api/v1/admin/import/scan?force=${force}&mode=${mode}`, { method: 'POST' });
+    showStatus('scan-status', `Escaneo iniciado (${mode}): ` + data.jobs.length + ' archivos', 'success');
     pollJobs();
   } catch(e) {
     showStatus('scan-status', e.message, 'error');

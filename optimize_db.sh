@@ -5,7 +5,7 @@
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-CONTAINER="${1:-map-db-1}"
+CONTAINER="${1:-map-db}"
 DB_USER="${2:-mapengine}"
 DB_NAME="${3:-mapdb}"
 

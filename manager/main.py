@@ -4,14 +4,16 @@ from typing import Optional
 
 import uvicorn
 import jwt
-from fastapi import FastAPI, HTTPException, Request, Depends, status, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, Depends, status, UploadFile, File, BackgroundTasks, Response
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text, pool
+import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("map-engine")
@@ -24,7 +26,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 480
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://mapengine:mapengine123@db:5432/mapdb")
 SYNC_DB_URL = DATABASE_URL.replace("+asyncpg", "")
 MARTIN_URL = os.getenv("MARTIN_URL", "http://localhost:3000")
-PUBLIC_MARTIN_URL = os.getenv("PUBLIC_MARTIN_URL", "https://tiles.neuraljira.tech")
+PUBLIC_MARTIN_URL = os.getenv("PUBLIC_MARTIN_URL", "https://tiles.neuraljira.tech").rstrip("/")
 
 USERS_PATH = "data/users.json"
 USAGE_PATH = "data/usage.json"
@@ -220,16 +222,34 @@ async def root():
 
 @app.get("/preview", response_class=HTMLResponse)
 async def preview():
-    with open("static/index.html") as f:
+    with open("static/public.html") as f:
         return HTMLResponse(f.read())
 
 @app.get("/api/v1/config")
 async def get_config():
-    return {"martin_url": PUBLIC_MARTIN_URL}
+    return {"martin_url": "/tiles"}
+
+def _layer_color(name: str, offset: int = 0) -> str:
+    # Paleta Minimalista y Profesional (Slate, Blue-Grey, Stone)
+    name_l = name.lower()
+    if "constru" in name_l:
+        return "#94a3b8" # Slate 400 (Muted Blue-Grey)
+    if "terreno" in name_l:
+        return "#cbd5e1" # Slate 200 (Light Grey)
+    if "sector" in name_l or "barrio" in name_l:
+        return "#e2e8f0" # Slate 100 (Very Light)
+    if "vereda" in name_l:
+        return "#f1f5f9" # Slate 50 (Near White)
+    
+    # Fallback a colores suaves
+    h = (hash(name) + offset) % 360
+    return f"hsl({h}, 20%, 75%)"
+
+def _layer_outline(name: str) -> str:
+    return "rgba(71, 85, 105, 0.2)" # Slate 700 con mucha transparencia
 
 @app.get("/api/v1/style.json")
 async def get_style(request: Request):
-    # ✅ Caché en memoria con TTL — evita queries a DB en cada carga del mapa
     now = time.time()
     if _style_cache["data"] and (now - _style_cache["ts"]) < STYLE_CACHE_TTL:
         return _style_cache["data"]
@@ -237,66 +257,239 @@ async def get_style(request: Request):
     host = request.url.hostname
     scheme = request.url.scheme
     port = request.url.port
-    base_url = f"{scheme}://{host}{f':{port}' if port else ''}"
+    forwarded_host = request.headers.get("x-forwarded-host")
+    forwarded_proto = request.headers.get("x-forwarded-proto", scheme)
+    base_url = f"{forwarded_proto}://{forwarded_host}" if forwarded_host else f"{scheme}://{host}{f':{port}' if port else ''}"
+
+    # Usar URL absoluta para evitar problemas con Web Workers
+    current_martin_url = f"{base_url}/tiles"
 
     style = {
-        "version": 8, "name": "NeuralJira 3D Premium",
+        "version": 8,
+        "name": "NeuralJira Optimized",
+        "metadata": {"maputnik:renderer": "mlgljs"},
         "sources": {
-            "osm": {"type": "raster",
-                    "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-                    "tileSize": 256, "attribution": "&copy; OpenStreetMap contributors"}
+            "osm": {
+                "type": "raster",
+                "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                "tileSize": 256,
+                "attribution": "&copy; OpenStreetMap contributors",
+                "maxzoom": 19
+            }
         },
         "glyphs": f"{base_url}/fonts/{{fontstack}}/{{range}}.pbf",
-        "layers": [{"id": "osm-layer", "type": "raster", "source": "osm",
-                    "minzoom": 0, "maxzoom": 19, "paint": {"raster-opacity": 0.3}}],
+        "layers": [
+            {
+                "id": "osm-layer",
+                "type": "raster",
+                "source": "osm",
+                "minzoom": 0,
+                "maxzoom": 19,
+                "paint": {"raster-opacity": 0.4}
+            }
+        ],
     }
 
     try:
         with engine.connect() as conn:
-            rows = list(conn.execute(text(
-                "SELECT f_table_name, type FROM geometry_columns WHERE f_table_schema = 'public'"
-            )))
+            rows = list(conn.execute(text("""
+                SELECT gc.f_table_name, gc.type
+                FROM geometry_columns gc
+                LEFT JOIN pg_stat_user_tables ps ON ps.relname = gc.f_table_name AND ps.schemaname = gc.f_table_schema
+                WHERE gc.f_table_schema = 'public'
+                  AND gc.f_table_name NOT LIKE '%_staging'
+                  AND COALESCE(ps.n_live_tup, 0) > 0
+            """)))
+
             for lid, gtype in rows:
-                style["sources"][lid] = {"type": "vector", "url": f"{PUBLIC_MARTIN_URL}/{lid}"}
-                if "POLYGON" in gtype and "constru" not in lid:
+                style["sources"][lid] = {
+                    "type": "vector",
+                    "tiles": [f"{current_martin_url}/{lid}/{{z}}/{{x}}/{{y}}"],
+                    "minzoom": 0,
+                    "maxzoom": 22
+                }
+
+            gtype_upper = {lid: gtype.upper() for lid, gtype in rows}
+
+            polygon_layers = [lid for lid, gu in gtype_upper.items() if "POLYGON" in gu]
+            line_layers = [lid for lid, gu in gtype_upper.items() if "LINESTRING" in gu or "LINE" in gu]
+            point_layers = [lid for lid, gu in gtype_upper.items() if "POINT" in gu]
+            geometry_layers = [lid for lid, gu in gtype_upper.items() if "GEOMETRY" in gu]
+
+            construction_layers = [lid for lid in polygon_layers if "constru" in lid.lower()]
+            base_polygons = [lid for lid in polygon_layers if "constru" not in lid.lower()]
+
+            for lid in base_polygons:
+                c = _layer_color(lid)
+                style["layers"].append({
+                    "id": f"{lid}-fill",
+                    "type": "fill",
+                    "source": lid,
+                    "source-layer": lid,
+                    "minzoom": 10,
+                    "paint": {
+                        "fill-color": c,
+                        "fill-opacity": 0.55,
+                        "fill-outline-color": _layer_outline(lid),
+                    },
+                })
+
+            for lid in construction_layers:
+                c = _layer_color(lid, 200)
+                style["layers"].append({
+                    "id": f"{lid}-fill-2d",
+                    "type": "fill",
+                    "source": lid,
+                    "source-layer": lid,
+                    "maxzoom": 13,
+                    "minzoom": 10,
+                    "paint": {
+                        "fill-color": c,
+                        "fill-opacity": 0.4,
+                        "fill-outline-color": _layer_outline(lid),
+                    },
+                })
+                style["layers"].append({
+                    "id": f"{lid}-3d",
+                    "type": "fill-extrusion",
+                    "source": lid,
+                    "source-layer": lid,
+                    "minzoom": 13,
+                    "paint": {
+                        "fill-extrusion-color": [
+                            "interpolate", ["linear"], 
+                            ["coalesce", ["get", "numero_pisos"], ["get", "pisos"], 1],
+                            1, "#f8fafc",
+                            3, "#f1f5f9",
+                            5, "#e2e8f0",
+                            10, "#cbd5e1"
+                        ],
+                        "fill-extrusion-height": [
+                            "coalesce",
+                            ["*", ["get", "numero_pisos"], 3.8],
+                            ["*", ["get", "pisos"], 3.8],
+                            3.8
+                        ],
+                        "fill-extrusion-base": 0,
+                        "fill-extrusion-opacity": 0.8
+                    },
+                })
+
+            for lid in line_layers:
+                c = "#475569" # Slate 700 para líneas
+                width = 1.0 if "nomenclatura" in lid.lower() else 1.5
+                style["layers"].append({
+                    "id": f"{lid}-line",
+                    "type": "line",
+                    "source": lid,
+                    "source-layer": lid,
+                    "minzoom": 12,
+                    "paint": {
+                        "line-color": c,
+                        "line-width": width,
+                        "line-opacity": 0.6,
+                    },
+                })
+
+            for lid in point_layers:
+                c = "#64748b" # Slate 500
+                style["layers"].append({
+                    "id": f"{lid}-circle",
+                    "type": "circle",
+                    "source": lid,
+                    "source-layer": lid,
+                    "minzoom": 14,
+                    "paint": {
+                        "circle-color": c,
+                        "circle-radius": 3,
+                        "circle-stroke-width": 1,
+                        "circle-stroke-color": "#fff",
+                        "circle-opacity": 0.7,
+                    },
+                })
+
+            for lid in geometry_layers:
+                c = "#94a3b8"
+                style["layers"].append({
+                    "id": f"{lid}-line",
+                    "type": "line",
+                    "source": lid,
+                    "source-layer": lid,
+                    "minzoom": 13,
+                    "paint": {
+                        "line-color": c,
+                        "line-width": 1,
+                        "line-opacity": 0.5,
+                    },
+                })
+
+            for lid, gtype in rows:
+                label_keywords = ["nomencl", "etiqueta", "label", "lugar", "poi", "vereda", "sector", "terreno"]
+                if any(x in lid.lower() for x in label_keywords):
                     style["layers"].append({
-                        "id": f"{lid}-fill", "type": "fill", "source": lid, "source-layer": lid,
-                        "paint": {"fill-color": "#e2e8f0", "fill-opacity": 0.2,
-                                  "fill-outline-color": "rgba(255,255,255,0.1)"},
-                    })
-            for lid, _ in rows:
-                if "constru" in lid:
-                    style["layers"].append({
-                        "id": f"{lid}-3d", "type": "fill-extrusion", "source": lid,
-                        "source-layer": lid, "minzoom": 14,
-                        "paint": {
-                            "fill-extrusion-color": ["coalesce",
-                                ["interpolate", ["linear"], ["get", "numero_pisos"],
-                                 1, "#f97316", 3, "#fb923c", 5, "#ea580c"], "#f97316"],
-                            "fill-extrusion-height": ["coalesce",
-                                ["interpolate", ["linear"], ["get", "numero_pisos"],
-                                 0, 3.5, 1, 4, 2, 8, 5, 20], 4],
-                            "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85,
-                        },
-                    })
-            for lid, _ in rows:
-                if any(x in lid.lower() for x in ["nomencl", "etiqueta", "label", "u_nomen"]):
-                    style["layers"].append({
-                        "id": f"{lid}-label", "type": "symbol", "source": lid,
-                        "source-layer": lid, "minzoom": 14,
+                        "id": f"{lid}-label",
+                        "type": "symbol",
+                        "source": lid,
+                        "source-layer": lid,
+                        "minzoom": 15,
                         "layout": {
-                            "text-field": ["coalesce", ["get", "TEXTO"], ["get", "texto"],
-                                           ["get", "nombre"], ["get", "ETIQUETA"]],
-                            "text-font": ["Open Sans Regular"], "text-size": 12,
-                            "text-allow-overlap": False, "text-letter-spacing": 0.05,
+                            "text-field": [
+                                "coalesce",
+                                ["get", "texto"], ["get", "nombre"], ["get", "label"],
+                                ["get", "name"], ["get", "numero_predial"], ["get", "codigo"]
+                            ],
+                            "text-font": ["Open Sans Regular"],
+                            "text-size": [
+                                "interpolate", ["linear"], ["zoom"],
+                                15, 9,
+                                18, 12
+                            ],
+                            "text-letter-spacing": 0.05,
+                            "text-max-width": 8,
+                            "symbol-placement": "point",
+                            "text-variable-anchor": ["top", "bottom", "left", "right"],
+                            "text-padding": 2
                         },
-                        "paint": {"text-color": "#ffffff", "text-halo-color": "#0f172a", "text-halo-width": 2},
+                        "paint": {
+                            "text-color": "#334155", # Slate 800
+                            "text-halo-color": "rgba(255, 255, 255, 0.8)",
+                            "text-halo-width": 1.5
+                        },
                     })
     except Exception as e:
-        logger.error(f"Style Error: {e}")
+        logger.error(f"Error generando style.json: {e}")
 
     _style_cache.update({"data": style, "ts": now})
     return style
+
+# ─── Tiles Proxy (Unified Gateway) ──────────────────────────────────────────
+
+_http_client = httpx.AsyncClient(base_url=MARTIN_URL, timeout=30.0)
+
+@app.get("/tiles/{path:path}")
+async def proxy_tiles(path: str, request: Request):
+    """
+    Proxy que reenvía peticiones de tiles a Martin.
+    Esto soluciona problemas de CORS y prefijos de URL.
+    """
+    url = f"/{path}"
+    if request.query_params:
+        url += f"?{request.query_params}"
+    
+    try:
+        # Reenviar la petición a Martin (interno en Docker)
+        rp_resp = await _http_client.get(url)
+        
+        # Devolver la respuesta con los mismos headers (especialmente content-type)
+        return Response(
+            content=rp_resp.content,
+            status_code=rp_resp.status_code,
+            headers={k: v for k, v in rp_resp.headers.items() if k.lower() in ["content-type", "content-encoding", "cache-control"]}
+        )
+    except Exception as e:
+        logger.error(f"Error en proxy de tiles: {e}")
+        raise HTTPException(status_code=502, detail="Error conectando con el servidor de tiles")
+
 
 
 @app.get("/api/v1/layers")
@@ -321,6 +514,7 @@ async def list_layers():
                 FROM geometry_columns gc
                 LEFT JOIN pg_stat_user_tables ps
                        ON ps.relname = gc.f_table_name
+                      AND ps.schemaname = gc.f_table_schema
                 WHERE gc.f_table_schema = 'public'
                 ORDER BY gc.f_table_name
             """))
@@ -384,7 +578,9 @@ async def admin_stats(current_user: str = Depends(get_current_user)):
                     COUNT(*)                          AS layer_count,
                     COALESCE(SUM(ps.n_live_tup), 0)  AS total_features
                 FROM geometry_columns gc
-                LEFT JOIN pg_stat_user_tables ps ON ps.relname = gc.f_table_name
+                LEFT JOIN pg_stat_user_tables ps
+                       ON ps.relname = gc.f_table_name
+                      AND ps.schemaname = gc.f_table_schema
                 WHERE gc.f_table_schema = 'public'
             """)).fetchone()
             layer_count = row[0]
@@ -414,29 +610,33 @@ async def list_jobs(current_user: str = Depends(get_current_user)):
 
 # ─── Importación Async (no bloquea FastAPI) ───────────────────────────────────
 
-async def _run_ingest_job(job_id: str, filepath: str, force: bool = False):
+async def _run_ingest_job(job_id: str, filepath: str, force: bool = False, mode: str = "replace"):
     """Corre en background — importa sin bloquear el servidor."""
     from ingest import ingest_file
 
-    update_job(job_id, status="running", message="Procesando archivo...")
+    update_job(job_id, status="running", message=f"Procesando archivo ({mode})...")
 
     def progress(layer, current, total, msg):
         pct = int((current / max(total, 1)) * 100)
         update_job(job_id, layer=layer, progress=pct, message=msg)
 
     try:
-        result = ingest_file(
-            filepath=filepath,
+        from fastapi.concurrency import run_in_threadpool
+        result = await run_in_threadpool(
+            ingest_file,
+            filepath=str(filepath),
             db_url=SYNC_DB_URL,
             progress_cb=progress,
             force=force,
+            mode=mode,
         )
         invalidate_style_cache()
+        num_imported = len([r for r in result.get('results', []) if r.get('status') == 'imported'])
         update_job(
             job_id,
             status="done",
             progress=100,
-            message=f"✅ Completado: {len(result['imported'])} capas importadas",
+            message=f"✅ Completado: {num_imported} capas procesadas",
             finished_at=datetime.now(timezone.utc).isoformat(),
             result=result,
         )
@@ -456,6 +656,7 @@ async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     force: bool = False,
+    mode: str = "replace",
     current_user: str = Depends(get_current_user),
 ):
     """
@@ -464,7 +665,7 @@ async def upload_file(
     """
     filename = file.filename
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in (".gpkg", ".geojson", ".json"):
+    if ext not in (".gpkg", ".geojson", ".json", ".dxf"):
         raise HTTPException(status_code=400, detail=f"Formato no soportado: {ext}")
 
     filepath = os.path.join(DATA_DIR, filename)
@@ -472,7 +673,7 @@ async def upload_file(
         shutil.copyfileobj(file.file, buf, length=16 * 1024 * 1024)
 
     job_id = create_job()
-    background_tasks.add_task(_run_ingest_job, job_id, filepath, force)
+    background_tasks.add_task(_run_ingest_job, job_id, filepath, force, mode)
 
     async with _usage_lock:
         if _usage_cache:
@@ -491,13 +692,15 @@ async def upload_file(
 async def scan_data(
     background_tasks: BackgroundTasks,
     force: bool = False,
+    mode: str = "replace",
     current_user: str = Depends(get_current_user),
 ):
     """Importa todos los archivos GPKG/GeoJSON del directorio data/."""
     files = [
         os.path.join(DATA_DIR, f)
         for f in os.listdir(DATA_DIR)
-        if os.path.splitext(f)[1].lower() in (".gpkg", ".geojson", ".json")
+        if os.path.splitext(f)[1].lower() in (".gpkg", ".geojson", ".json", ".dxf")
+        and f not in ("usage.json", "users.json", "layer_hashes.json")
         and os.path.isfile(os.path.join(DATA_DIR, f))
     ]
     if not files:
@@ -506,7 +709,7 @@ async def scan_data(
     job_ids = []
     for filepath in files:
         job_id = create_job()
-        background_tasks.add_task(_run_ingest_job, job_id, filepath, force)
+        background_tasks.add_task(_run_ingest_job, job_id, filepath, force, mode)
         job_ids.append({"file": os.path.basename(filepath), "job_id": job_id})
 
     await track_usage("scan", current_user)
@@ -522,7 +725,7 @@ async def replace_data(
     """Limpia la DB y sube un nuevo archivo en segundo plano."""
     filename = file.filename
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in (".gpkg", ".geojson", ".json"):
+    if ext not in (".gpkg", ".geojson", ".json", ".dxf"):
         raise HTTPException(status_code=400, detail=f"Formato no soportado: {ext}")
 
     # Limpiar tablas existentes
