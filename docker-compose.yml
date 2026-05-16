@@ -4,6 +4,7 @@ services:
     image: postgis/postgis:15-3.4
     container_name: map-db
     restart: unless-stopped
+    shm_size: 1gb
     ports:
       - "${DB_PORT:-5433}:5432"
     environment:
