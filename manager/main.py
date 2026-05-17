@@ -226,9 +226,30 @@ async def preview():
     with open("static/public.html") as f:
         return HTMLResponse(f.read())
 
+def _get_base_url(request: Request) -> str:
+    # Detección de base_url robusta para resolver URL absoluta de Martin / Tiles / Glyphs.
+    # Esto es crucial porque MapLibre GL ejecuta peticiones de tiles y fuentes en un Web Worker (blob:)
+    # donde las URLs relativas fallan al no poder resolverse con la base del Worker.
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_host:
+        scheme = forwarded_proto or request.url.scheme
+        base_url = f"{scheme}://{forwarded_host}"
+    else:
+        host = request.url.hostname or "localhost"
+        port = request.url.port
+        scheme = request.url.scheme
+        if port and port not in (80, 443):
+            base_url = f"{scheme}://{host}:{port}"
+        else:
+            base_url = f"{scheme}://{host}"
+    return base_url
+
 @app.get("/api/v1/config")
-async def get_config():
-    return {"martin_url": "/tiles"}
+async def get_config(request: Request):
+    base_url = _get_base_url(request)
+    return {"martin_url": f"{base_url}/tiles"}
 
 def _layer_color(name: str, offset: int = 0) -> str:
     name_l = name.lower()
@@ -254,24 +275,7 @@ async def get_style(request: Request):
     if _style_cache["data"] and (now - _style_cache["ts"]) < STYLE_CACHE_TTL:
         return _style_cache["data"]
 
-    # Detección de base_url robusta para resolver URL absoluta de Martin / Tiles.
-    # Esto es crucial porque MapLibre GL ejecuta peticiones de tiles en un Web Worker (blob:)
-    # donde las URLs relativas fallan al no poder resolverse con la base del Worker.
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    
-    if forwarded_host:
-        scheme = forwarded_proto or request.url.scheme
-        base_url = f"{scheme}://{forwarded_host}"
-    else:
-        host = request.url.hostname or "localhost"
-        port = request.url.port
-        scheme = request.url.scheme
-        if port and port not in (80, 443):
-            base_url = f"{scheme}://{host}:{port}"
-        else:
-            base_url = f"{scheme}://{host}"
-
+    base_url = _get_base_url(request)
     current_martin_url = f"{base_url}/tiles"
 
     style = {
