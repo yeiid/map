@@ -254,15 +254,24 @@ async def get_style(request: Request):
     if _style_cache["data"] and (now - _style_cache["ts"]) < STYLE_CACHE_TTL:
         return _style_cache["data"]
 
-    host = request.url.hostname
-    scheme = request.url.scheme
-    port = request.url.port
-    forwarded_host = request.headers.get("x-forwarded-host")
-    forwarded_proto = request.headers.get("x-forwarded-proto", scheme)
-    base_url = f"{forwarded_proto}://{forwarded_host}" if forwarded_host else f"{scheme}://{host}{f':{port}' if port else ''}"
-
-    # Usar URL absoluta para que los Web Workers de MapLibre puedan resolverla correctamente
-    current_martin_url = f"{base_url}/tiles"
+    # Priorizar PUBLIC_MARTIN_URL si está configurada (ideal para Dokploy/Producción)
+    if PUBLIC_MARTIN_URL and PUBLIC_MARTIN_URL.startswith("http") and "localhost" not in PUBLIC_MARTIN_URL:
+        # Si la URL termina en /tiles, la usamos como base para los tiles y extraemos el resto para glyphs
+        if PUBLIC_MARTIN_URL.endswith("/tiles"):
+            current_martin_url = PUBLIC_MARTIN_URL
+            base_url = PUBLIC_MARTIN_URL.replace("/tiles", "")
+        else:
+            current_martin_url = f"{PUBLIC_MARTIN_URL}/tiles"
+            base_url = PUBLIC_MARTIN_URL
+    else:
+        # Detección automática para local/desarrollo
+        host = request.url.hostname
+        scheme = request.url.scheme
+        port = request.url.port
+        forwarded_host = request.headers.get("x-forwarded-host")
+        forwarded_proto = request.headers.get("x-forwarded-proto", scheme)
+        base_url = f"{forwarded_proto}://{forwarded_host}" if forwarded_host else f"{scheme}://{host}{f':{port}' if port else ''}"
+        current_martin_url = f"{base_url}/tiles"
 
     style = {
         "version": 8,
@@ -277,7 +286,7 @@ async def get_style(request: Request):
                 "maxzoom": 19
             }
         },
-        "glyphs": f"{base_url}/fonts/{{fontstack}}/{{range}}.pbf",
+        "glyphs": f"{base_url.rstrip('/')}/fonts/{{fontstack}}/{{range}}.pbf",
         "layers": [
             {
                 "id": "osm-layer",
