@@ -440,7 +440,8 @@ async def get_style(request: Request):
                 })
 
             for lid, gtype in rows:
-                label_keywords = ["nomencl", "etiqueta", "label", "lugar", "poi", "vereda", "sector", "terreno", "constru"]
+                # Removemos 'constru' y 'terreno' para no pintar los números prediales/códigos catastrales invasivos en los edificios y lotes
+                label_keywords = ["nomencl", "etiqueta", "label", "lugar", "poi", "vereda", "sector"]
                 if any(x in lid.lower() for x in label_keywords):
                     style["layers"].append({
                         "id": f"{lid}-label",
