@@ -5,7 +5,8 @@ from typing import Optional
 import uvicorn
 import jwt
 from fastapi import FastAPI, HTTPException, Request, Depends, status, UploadFile, File, BackgroundTasks, Response
-from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
@@ -230,23 +231,22 @@ async def get_config():
     return {"martin_url": "/tiles"}
 
 def _layer_color(name: str, offset: int = 0) -> str:
-    # Paleta Minimalista y Profesional (Slate, Blue-Grey, Stone)
     name_l = name.lower()
     if "constru" in name_l:
-        return "#94a3b8" # Slate 400 (Muted Blue-Grey)
+        return "#94a3b8"  # Slate 400 (Muted Blue-Grey)
     if "terreno" in name_l:
-        return "#cbd5e1" # Slate 200 (Light Grey)
+        return "#cbd5e1"  # Slate 200 (Light Grey)
     if "sector" in name_l or "barrio" in name_l:
-        return "#e2e8f0" # Slate 100 (Very Light)
+        return "#e2e8f0"  # Slate 100 (Very Light Grey)
     if "vereda" in name_l:
-        return "#f1f5f9" # Slate 50 (Near White)
+        return "#f1f5f9"  # Slate 50 (Near White)
     
-    # Fallback a colores suaves
+    # Fallback a colores suaves/pasteles minimalistas
     h = (hash(name) + offset) % 360
     return f"hsl({h}, 20%, 75%)"
 
 def _layer_outline(name: str) -> str:
-    return "rgba(71, 85, 105, 0.2)" # Slate 700 con mucha transparencia
+    return "rgba(71, 85, 105, 0.15)"  # Gris pizarra suave y semi-transparente
 
 @app.get("/api/v1/style.json")
 async def get_style(request: Request):
@@ -254,24 +254,25 @@ async def get_style(request: Request):
     if _style_cache["data"] and (now - _style_cache["ts"]) < STYLE_CACHE_TTL:
         return _style_cache["data"]
 
-    # Priorizar PUBLIC_MARTIN_URL si está configurada (ideal para Dokploy/Producción)
-    if PUBLIC_MARTIN_URL and PUBLIC_MARTIN_URL.startswith("http") and "localhost" not in PUBLIC_MARTIN_URL:
-        # Si la URL termina en /tiles, la usamos como base para los tiles y extraemos el resto para glyphs
-        if PUBLIC_MARTIN_URL.endswith("/tiles"):
-            current_martin_url = PUBLIC_MARTIN_URL
-            base_url = PUBLIC_MARTIN_URL.replace("/tiles", "")
-        else:
-            current_martin_url = f"{PUBLIC_MARTIN_URL}/tiles"
-            base_url = PUBLIC_MARTIN_URL
+    # Detección de base_url robusta para resolver URL absoluta de Martin / Tiles.
+    # Esto es crucial porque MapLibre GL ejecuta peticiones de tiles en un Web Worker (blob:)
+    # donde las URLs relativas fallan al no poder resolverse con la base del Worker.
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_host:
+        scheme = forwarded_proto or request.url.scheme
+        base_url = f"{scheme}://{forwarded_host}"
     else:
-        # Detección automática para local/desarrollo
-        host = request.url.hostname
-        scheme = request.url.scheme
+        host = request.url.hostname or "localhost"
         port = request.url.port
-        forwarded_host = request.headers.get("x-forwarded-host")
-        forwarded_proto = request.headers.get("x-forwarded-proto", scheme)
-        base_url = f"{forwarded_proto}://{forwarded_host}" if forwarded_host else f"{scheme}://{host}{f':{port}' if port else ''}"
-        current_martin_url = f"{base_url}/tiles"
+        scheme = request.url.scheme
+        if port and port not in (80, 443):
+            base_url = f"{scheme}://{host}:{port}"
+        else:
+            base_url = f"{scheme}://{host}"
+
+    current_martin_url = f"{base_url}/tiles"
 
     style = {
         "version": 8,
@@ -286,7 +287,7 @@ async def get_style(request: Request):
                 "maxzoom": 19
             }
         },
-        "glyphs": f"{base_url.rstrip('/')}/fonts/{{fontstack}}/{{range}}.pbf",
+        "glyphs": f"{base_url}/fonts/{{fontstack}}/{{range}}.pbf",
         "layers": [
             {
                 "id": "osm-layer",
@@ -294,7 +295,7 @@ async def get_style(request: Request):
                 "source": "osm",
                 "minzoom": 0,
                 "maxzoom": 19,
-                "paint": {"raster-opacity": 0.4}
+                "paint": {"raster-opacity": 0.25}
             }
         ],
     }
@@ -338,7 +339,7 @@ async def get_style(request: Request):
                     "minzoom": 10,
                     "paint": {
                         "fill-color": c,
-                        "fill-opacity": 0.55,
+                        "fill-opacity": 0.65,
                         "fill-outline-color": _layer_outline(lid),
                     },
                 })
@@ -354,7 +355,7 @@ async def get_style(request: Request):
                     "minzoom": 10,
                     "paint": {
                         "fill-color": c,
-                        "fill-opacity": 0.4,
+                        "fill-opacity": 0.5,
                         "fill-outline-color": _layer_outline(lid),
                     },
                 })
@@ -368,10 +369,10 @@ async def get_style(request: Request):
                         "fill-extrusion-color": [
                             "interpolate", ["linear"], 
                             ["coalesce", ["get", "numero_pisos"], ["get", "pisos"], 1],
-                            1, "#f8fafc",
-                            3, "#f1f5f9",
-                            5, "#e2e8f0",
-                            10, "#cbd5e1"
+                            1, c,
+                            3, "#38bdf8",
+                            5, "#0ea5e9",
+                            10, "#0284c7"
                         ],
                         "fill-extrusion-height": [
                             "coalesce",
@@ -380,13 +381,13 @@ async def get_style(request: Request):
                             3.8
                         ],
                         "fill-extrusion-base": 0,
-                        "fill-extrusion-opacity": 0.8
+                        "fill-extrusion-opacity": 0.85
                     },
                 })
 
             for lid in line_layers:
-                c = "#475569" # Slate 700 para líneas
-                width = 1.0 if "nomenclatura" in lid.lower() else 1.5
+                c = "#475569" if "dxf" in lid.lower() else _layer_color(lid, 100)
+                width = 1.5 if "nomenclatura" in lid.lower() else 2
                 style["layers"].append({
                     "id": f"{lid}-line",
                     "type": "line",
@@ -396,12 +397,12 @@ async def get_style(request: Request):
                     "paint": {
                         "line-color": c,
                         "line-width": width,
-                        "line-opacity": 0.6,
+                        "line-opacity": 0.85,
                     },
                 })
 
             for lid in point_layers:
-                c = "#64748b" # Slate 500
+                c = _layer_color(lid, 50)
                 style["layers"].append({
                     "id": f"{lid}-circle",
                     "type": "circle",
@@ -410,30 +411,30 @@ async def get_style(request: Request):
                     "minzoom": 14,
                     "paint": {
                         "circle-color": c,
-                        "circle-radius": 3,
+                        "circle-radius": 4,
                         "circle-stroke-width": 1,
                         "circle-stroke-color": "#fff",
-                        "circle-opacity": 0.7,
+                        "circle-opacity": 0.8,
                     },
                 })
 
             for lid in geometry_layers:
-                c = "#94a3b8"
+                c = _layer_color(lid, 150)
                 style["layers"].append({
                     "id": f"{lid}-line",
                     "type": "line",
                     "source": lid,
                     "source-layer": lid,
-                    "minzoom": 13,
+                    "minzoom": 14,
                     "paint": {
                         "line-color": c,
-                        "line-width": 1,
-                        "line-opacity": 0.5,
+                        "line-width": 2,
+                        "line-opacity": 0.9,
                     },
                 })
 
             for lid, gtype in rows:
-                label_keywords = ["nomencl", "etiqueta", "label", "lugar", "poi", "vereda", "sector", "terreno"]
+                label_keywords = ["nomencl", "etiqueta", "label", "lugar", "poi", "vereda", "sector", "terreno", "constru"]
                 if any(x in lid.lower() for x in label_keywords):
                     style["layers"].append({
                         "id": f"{lid}-label",
@@ -447,22 +448,23 @@ async def get_style(request: Request):
                                 ["get", "texto"], ["get", "nombre"], ["get", "label"],
                                 ["get", "name"], ["get", "numero_predial"], ["get", "codigo"]
                             ],
-                            "text-font": ["Open Sans Regular"],
+                            "text-font": ["Open Sans Bold"],
                             "text-size": [
                                 "interpolate", ["linear"], ["zoom"],
-                                15, 9,
-                                18, 12
+                                15, 10,
+                                18, 14
                             ],
-                            "text-letter-spacing": 0.05,
-                            "text-max-width": 8,
+                            "text-letter-spacing": 0.02,
+                            "text-max-width": 10,
                             "symbol-placement": "point",
                             "text-variable-anchor": ["top", "bottom", "left", "right"],
                             "text-padding": 2
                         },
                         "paint": {
-                            "text-color": "#334155", # Slate 800
-                            "text-halo-color": "rgba(255, 255, 255, 0.8)",
-                            "text-halo-width": 1.5
+                            "text-color": "#0f172a",
+                            "text-halo-color": "rgba(255, 255, 255, 0.95)",
+                            "text-halo-width": 2,
+                            "text-halo-blur": 1
                         },
                     })
     except Exception as e:
@@ -481,19 +483,23 @@ async def proxy_tiles(path: str, request: Request):
     Proxy que reenvía peticiones de tiles a Martin.
     Esto soluciona problemas de CORS y prefijos de URL.
     """
-    url = f"/{path}"
+    url = f"{MARTIN_URL}/{path}"
     if request.query_params:
         url += f"?{request.query_params}"
     
     try:
-        # Reenviar la petición a Martin (interno en Docker)
-        rp_resp = await _http_client.get(url)
+        req = _http_client.build_request("GET", url)
+        # Usamos send con stream=True y aiter_raw() para reenviar los bytes crudos comprimidos.
+        # Esto evita que httpx descomprima automáticamente el gzip y rompa el header Content-Encoding.
+        rp_resp = await _http_client.send(req, stream=True)
         
-        # Devolver la respuesta con los mismos headers (especialmente content-type)
-        return Response(
-            content=rp_resp.content,
+        headers = {k: v for k, v in rp_resp.headers.items() if k.lower() in ["content-type", "content-encoding", "cache-control", "etag"]}
+        
+        return StreamingResponse(
+            rp_resp.aiter_raw(),
             status_code=rp_resp.status_code,
-            headers={k: v for k, v in rp_resp.headers.items() if k.lower() in ["content-type", "content-encoding", "cache-control"]}
+            headers=headers,
+            background=BackgroundTask(rp_resp.aclose)
         )
     except Exception as e:
         logger.error(f"Error en proxy de tiles: {e}")
