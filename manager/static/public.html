@@ -57,9 +57,10 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
 .status-msg.error{display:block;background:rgba(239,68,68,0.15);color:var(--error);border:1px solid rgba(239,68,68,0.25)}
 #coords-text{width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid #475569;background:var(--bg);color:var(--text);font-family:monospace;font-size:.72rem;resize:vertical;outline:none}
 #coords-text:focus{border-color:var(--accent)}
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#475569;border-radius:4px}
+::-webkit-scrollbar{width:8px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,0.15);border-radius:4px}
+::-webkit-scrollbar-thumb{background:#475569;border-radius:4px;transition:background 0.2s}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 </style>
 </head>
 <body>
