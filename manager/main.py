@@ -235,6 +235,9 @@ def _get_base_url(request: Request) -> str:
     
     if forwarded_host:
         scheme = forwarded_proto or request.url.scheme
+        # Si es el dominio de producción, forzar HTTPS de forma segura para evitar bloqueo de contenido mixto
+        if "neuraljira.tech" in forwarded_host:
+            scheme = "https"
         base_url = f"{scheme}://{forwarded_host}"
     else:
         host = request.url.hostname or "localhost"
