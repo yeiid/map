@@ -319,7 +319,7 @@ async def get_style(request: Request):
                 style["sources"][lid] = {
                     "type": "vector",
                     "tiles": [f"{current_martin_url}/{lid}/{{z}}/{{x}}/{{y}}"],
-                    "minzoom": 0,
+                    "minzoom": 10,
                     "maxzoom": 22
                 }
 
