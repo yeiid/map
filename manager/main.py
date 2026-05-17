@@ -382,9 +382,8 @@ async def get_style(request: Request):
                             10, "#0284c7"
                         ],
                         "fill-extrusion-height": [
-                            "coalesce",
-                            ["*", ["get", "numero_pisos"], 3.8],
-                            ["*", ["get", "pisos"], 3.8],
+                            "*",
+                            ["coalesce", ["get", "numero_pisos"], ["get", "pisos"], 1],
                             3.8
                         ],
                         "fill-extrusion-base": 0,
