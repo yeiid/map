@@ -261,8 +261,8 @@ async def get_style(request: Request):
     forwarded_proto = request.headers.get("x-forwarded-proto", scheme)
     base_url = f"{forwarded_proto}://{forwarded_host}" if forwarded_host else f"{scheme}://{host}{f':{port}' if port else ''}"
 
-    # Usar URL relativa para máxima compatibilidad con Proxies/SSL (Dokploy/Traefik)
-    current_martin_url = "/tiles"
+    # Usar URL absoluta para que los Web Workers de MapLibre puedan resolverla correctamente
+    current_martin_url = f"{base_url}/tiles"
 
     style = {
         "version": 8,
@@ -277,7 +277,7 @@ async def get_style(request: Request):
                 "maxzoom": 19
             }
         },
-        "glyphs": "/fonts/{fontstack}/{range}.pbf",
+        "glyphs": f"{base_url}/fonts/{{fontstack}}/{{range}}.pbf",
         "layers": [
             {
                 "id": "osm-layer",
