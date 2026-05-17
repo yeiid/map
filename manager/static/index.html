@@ -279,7 +279,11 @@ async function initDashboard() {
     document.getElementById('username-display').textContent = me.username;
   } catch(e) {}
 
-  await refreshData();
+  if (map.isStyleLoaded()) {
+    await refreshData();
+  } else {
+    map.once('style.load', refreshData);
+  }
   // Poll jobs frequently
   setInterval(pollJobs, 2000);
 }
@@ -338,7 +342,14 @@ async function loadLayers() {
       list.innerHTML = '<p style="color:var(--muted);font-size:.8rem">Sin capas cargadas.</p>';
       return;
     }
+    const styleLayers = (map && map.getStyle()) ? (map.getStyle().layers || []) : [];
     data.layers.forEach(layer => {
+      // Determina el estado inicial a partir de si la capa existe en style.json y está visible
+      const hasStyleLayer = styleLayers.some(l => l.id.startsWith(layer.name + '-'));
+      if (mapLayers[layer.name] === undefined) {
+        mapLayers[layer.name] = hasStyleLayer;
+      }
+      
       const item = document.createElement('div');
       item.className = 'layer-item';
       const icon = (layer.type.includes('POLYGON') || layer.type === 'GEOMETRY') ? '⬚' : layer.type.includes('LINE') ? '⌇' : layer.type.includes('POINT') ? '•' : '◈';
@@ -359,39 +370,17 @@ async function loadLayers() {
 function toggleLayer(name, type, features) {
   const el = document.getElementById(`toggle-${name}`);
   const on = el.classList.toggle('active');
-  features = parseInt(features);
+  mapLayers[name] = on;
+
+  const styleLayers = map.getStyle().layers || [];
+  const layerIds = styleLayers
+    .filter(l => l.id.startsWith(name + '-') || l.id === name)
+    .map(l => l.id);
 
   if (on) {
-    if (features > 200000 && !confirm(`Capa muy pesada (${features.toLocaleString()}). ¿Cargar?`)) {
-      el.classList.remove('active');
-      return;
-    }
-    if (!map.getSource(name)) {
-      const baseUrl = CONFIG.martin_url.endsWith('/') ? CONFIG.martin_url.slice(0, -1) : CONFIG.martin_url;
-      map.addSource(name, { 
-        type: 'vector', 
-        tiles: [`${baseUrl}/${name}/{z}/{x}/{y}`] 
-      });
-    }
-    const color = `hsl(${Math.random()*360}, 25%, 70%)`;
-    let layerType, paint;
-    if (type.includes('POLYGON') || type === 'GEOMETRY') {
-      layerType = 'fill';
-      paint = { 'fill-color': color, 'fill-opacity': 0.45, 'fill-outline-color': 'rgba(71, 85, 105, 0.15)' };
-    } else if (type.includes('LINE')) {
-      layerType = 'line';
-      paint = { 'line-color': color, 'line-width': 1.5, 'line-opacity': 0.85 };
-    } else {
-      layerType = 'circle';
-      paint = { 'circle-color': color, 'circle-radius': 4, 'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.8 };
-    }
-    if (!map.getLayer(name)) {
-      map.addLayer({ id: name, type: layerType, source: name, 'source-layer': name, paint });
-    }
-    mapLayers[name] = true;
+    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
   } else {
-    if (map.getLayer(name)) map.removeLayer(name);
-    delete mapLayers[name];
+    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'none'));
   }
 }
 
