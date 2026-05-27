@@ -174,6 +174,25 @@ async def _flush_usage_periodically():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_flush_usage_periodically())
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.dynamic_buildings (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255),
+                    height DOUBLE PRECISION NOT NULL DEFAULT 10.0,
+                    color VARCHAR(50) NOT NULL DEFAULT '#38bdf8',
+                    geom GEOMETRY(Polygon, 4326) NOT NULL,
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT TIMEZONE('utc', CURRENT_TIMESTAMP)
+                );
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS sidx_dynamic_buildings_geom ON public.dynamic_buildings USING gist(geom);
+            """))
+            conn.commit()
+            logger.info("✅ Tabla dynamic_buildings e índice espacial GIST asegurados en PostGIS")
+    except Exception as e:
+        logger.error(f"❌ Error al inicializar tabla dynamic_buildings: {e}")
     logger.info("✅ Map Engine v3 iniciado — pool de conexiones activo")
 
 @app.on_event("shutdown")
@@ -308,8 +327,15 @@ async def get_style(request: Request):
     }
 
     try:
+        # Agregar fuente GeoJSON dinámica para casas 3D del usuario
+        style["sources"]["dynamic_buildings"] = {
+            "type": "geojson",
+            "data": f"{base_url}/api/v1/buildings",
+            "generateId": True
+        }
+
         with engine.connect() as conn:
-            rows = list(conn.execute(text("""
+            rows_all = list(conn.execute(text("""
                 SELECT gc.f_table_name, gc.type
                 FROM geometry_columns gc
                 LEFT JOIN pg_stat_user_tables ps ON ps.relname = gc.f_table_name AND ps.schemaname = gc.f_table_schema
@@ -317,6 +343,9 @@ async def get_style(request: Request):
                   AND gc.f_table_name NOT LIKE '%_staging'
                   AND COALESCE(ps.n_live_tup, 0) > 0
             """)))
+
+            # Filtrar dynamic_buildings de las capas vectoriales estándar
+            rows = [r for r in rows_all if r[0] != "dynamic_buildings"]
 
             for lid, gtype in rows:
                 style["sources"][lid] = {
@@ -474,6 +503,42 @@ async def get_style(request: Request):
                             "text-halo-blur": 1
                         },
                     })
+
+            # Añadir capa fill-extrusion interactiva para las casas 3D dinámicas
+            style["layers"].append({
+                "id": "dynamic-buildings-3d",
+                "type": "fill-extrusion",
+                "source": "dynamic_buildings",
+                "minzoom": 10,
+                "paint": {
+                    "fill-extrusion-color": ["coalesce", ["get", "color"], "#38bdf8"],
+                    "fill-extrusion-height": ["coalesce", ["get", "height"], 10.0],
+                    "fill-extrusion-base": 0.0,
+                    "fill-extrusion-opacity": 0.85
+                }
+            })
+
+            # Añadir capa symbol para etiquetas de las casas 3D dinámicas
+            style["layers"].append({
+                "id": "dynamic-buildings-label",
+                "type": "symbol",
+                "source": "dynamic_buildings",
+                "minzoom": 14,
+                "layout": {
+                    "text-field": ["get", "name"],
+                    "text-font": ["Open Sans Bold"],
+                    "text-size": 11,
+                    "text-offset": [0, 0],
+                    "text-anchor": "center"
+                },
+                "paint": {
+                    "text-color": "#ffffff",
+                    "text-halo-color": "rgba(15, 23, 42, 0.8)",
+                    "text-halo-width": 2,
+                    "text-halo-blur": 1
+                }
+            })
+
     except Exception as e:
         logger.error(f"Error generando style.json: {e}")
 
@@ -804,6 +869,110 @@ async def clear_data(current_user: str = Depends(get_current_user)):
 async def track_view():
     await track_usage("map_view")
     return {"status": "ok"}
+
+# ─── Dynamic 3D Buildings API ──────────────────────────────────────────────────
+
+class BuildingCreate(BaseModel):
+    name: Optional[str] = None
+    height: float
+    color: str
+    geometry: dict
+
+@app.post("/api/v1/buildings")
+async def create_building(building: BuildingCreate):
+    try:
+        geom_json = json.dumps(building.geometry)
+        with engine.connect() as conn:
+            # Validar que sea un polígono
+            if building.geometry.get("type") != "Polygon":
+                raise HTTPException(status_code=400, detail="La geometría debe ser de tipo Polygon")
+            
+            result = conn.execute(text("""
+                INSERT INTO public.dynamic_buildings (name, height, color, geom)
+                VALUES (:name, :height, :color, ST_SetSRID(ST_GeomFromGeoJSON(:geom_json), 4326))
+                RETURNING id, name, height, color, ST_AsGeoJSON(geom) as geom_json
+            """), {
+                "name": building.name,
+                "height": building.height,
+                "color": building.color,
+                "geom_json": geom_json
+            })
+            row = result.fetchone()
+            conn.commit()
+            
+        invalidate_style_cache()
+        
+        return {
+            "status": "success",
+            "building": {
+                "id": row[0],
+                "name": row[1],
+                "height": row[2],
+                "color": row[3],
+                "geometry": json.loads(row[4])
+            }
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error al crear edificación 3D: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/api/v1/buildings")
+async def list_buildings():
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT 
+                    id, 
+                    name, 
+                    height, 
+                    color, 
+                    ST_AsGeoJSON(geom) AS geom_json,
+                    created_at 
+                FROM public.dynamic_buildings
+                ORDER BY created_at DESC
+            """))
+            features = []
+            for r in rows:
+                geom = json.loads(r[4])
+                features.append({
+                    "type": "Feature",
+                    "id": r[0],
+                    "geometry": geom,
+                    "properties": {
+                        "id": r[0],
+                        "name": r[1],
+                        "height": r[2],
+                        "color": r[3],
+                        "created_at": r[5].isoformat() if r[5] else None
+                    }
+                })
+        return {
+            "type": "FeatureCollection",
+            "features": features
+        }
+    except Exception as e:
+        logger.error(f"Error al listar edificaciones 3D: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.delete("/api/v1/buildings/{id}")
+async def delete_building(id: int):
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                DELETE FROM public.dynamic_buildings WHERE id = :id
+            """), {"id": id})
+            conn.commit()
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Edificación 3D no encontrada")
+        invalidate_style_cache()
+        return {"status": "success", "message": f"Edificación {id} eliminada correctamente"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error al eliminar edificación 3D {id}: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 # ─── Entrypoint ───────────────────────────────────────────────────────────────
 

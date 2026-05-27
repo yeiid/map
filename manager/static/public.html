@@ -69,10 +69,12 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
 <div class="control-panel" id="panel-container">
   <div class="panel">
     <div class="panel-title">🗺️ NeuralJira Map</div>
-    <div class="flex gap-4">
-      <button class="btn btn-outline btn-sm flex-1" onclick="reloadStyle()">🔄 Recargar</button>
-      <button class="btn btn-outline btn-sm flex-1" onclick="togglePanel('layers-panel')">📋 Capas</button>
-      <button class="btn btn-outline btn-sm flex-1" onclick="togglePanel('coord-panel')">📍 Coordenadas</button>
+    <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:6px">
+      <button class="btn btn-outline btn-sm" onclick="reloadStyle()">🔄 Recargar Mapa</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <button class="btn btn-outline btn-sm" onclick="togglePanel('coord-panel')">📍 Coordenadas</button>
+      <button class="btn btn-outline btn-sm" onclick="togglePanel('builder-panel')">🏠 Constructor 3D</button>
     </div>
   </div>
 
@@ -110,14 +112,52 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
     </div>
   </div>
 
-  <div class="panel" id="layers-panel" style="display:none">
-    <div class="panel-title">📋 Capas</div>
-    <div id="layer-list">
-      <span class="text-muted">Cargando...</span>
+
+
+  <div class="panel" id="builder-panel" style="display:none">
+    <div class="panel-title">🏠 Constructor 3D</div>
+    <p class="text-muted mb-8" style="font-size:0.75rem;line-height:1.3">Dibuja casas en 3D en el mapa interactivo y ayuda a construir el mundo real de forma colaborativa.</p>
+    
+    <div class="flex gap-4 mb-8">
+      <button class="btn btn-primary btn-sm flex-1" id="btn-draw-builder" onclick="toggleBuilderDrawing()">✏️ Dibujar Base</button>
+      <button class="btn btn-outline btn-sm" onclick="clearBuilder()" id="btn-clear-builder" style="display:none">🗑️ Limpiar</button>
     </div>
-    <div class="flex gap-4 mt-8">
-      <button class="btn btn-outline btn-sm flex-1" onclick="toggleAllLayers(true)">Mostrar todo</button>
-      <button class="btn btn-outline btn-sm flex-1" onclick="toggleAllLayers(false)">Ocultar todo</button>
+
+    <div id="builder-controls" style="display:none" class="mt-8">
+      <div class="row">
+        <label>Nombre:</label>
+        <input type="text" id="b-name" placeholder="Ej. Casa de Juan" style="flex:1">
+      </div>
+      
+      <div class="row" style="margin-top:8px">
+        <label>Altura: <span id="height-val" class="text-accent" style="font-weight:bold">10m</span></label>
+      </div>
+      <div class="row">
+        <input type="range" id="b-height" min="3" max="50" value="10" step="1" oninput="onHeightChange(this.value)" style="flex:1">
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <label>Color 3D:</label>
+      </div>
+      <div class="flex gap-4 mb-8" style="justify-content:space-between;align-items:center">
+        <input type="color" id="b-color" value="#38bdf8" onchange="updatePreviewStyle()" style="width:36px;height:24px;padding:0;border:none;cursor:pointer;border-radius:4px;background:transparent">
+        <div style="display:flex;gap:4px">
+          <div class="color-swatch" style="background:#38bdf8;width:18px;height:18px;border-radius:50%;cursor:pointer" onclick="selectSwatch('#38bdf8')" title="Celeste"></div>
+          <div class="color-swatch" style="background:#10b981;width:18px;height:18px;border-radius:50%;cursor:pointer" onclick="selectSwatch('#10b981')" title="Verde"></div>
+          <div class="color-swatch" style="background:#fb7185;width:18px;height:18px;border-radius:50%;cursor:pointer" onclick="selectSwatch('#fb7185')" title="Rosa"></div>
+          <div class="color-swatch" style="background:#f59e0b;width:18px;height:18px;border-radius:50%;cursor:pointer" onclick="selectSwatch('#f59e0b')" title="Naranja"></div>
+          <div class="color-swatch" style="background:#a78bfa;width:18px;height:18px;border-radius:50%;cursor:pointer" onclick="selectSwatch('#a78bfa')" title="Morado"></div>
+        </div>
+      </div>
+
+      <button class="btn btn-success btn-sm mt-8" style="width:100%" onclick="saveBuilding()">🚀 Construir en el Mundo</button>
+    </div>
+
+    <div id="builder-status" class="status-msg"></div>
+
+    <div class="panel-title" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">🏘️ Construcciones (<span id="built-count">0</span>)</div>
+    <div id="built-list" style="max-height:150px;overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:4px">
+      <span class="text-muted">Cargando construcciones...</span>
     </div>
   </div>
 </div>
@@ -134,6 +174,13 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+map.addControl(new maplibregl.GeolocateControl({
+  positionOptions: {
+    enableHighAccuracy: true
+  },
+  trackUserLocation: true,
+  showUserLocation: true
+}), 'top-right');
 
 let plottedSource = null;
 let plottedCount = 0;
@@ -144,15 +191,19 @@ let activeDrawLayer = null;
 let layerStates = {};
 
 map.on('load', () => {
-  loadLayerList();
   initDrawSource();
   initPlottedSource();
+  loadBuiltBuildings();
 });
 
 map.on('click', (e) => {
-  if (drawMode) {
-    const lng = e.lngLat.lng;
-    const lat = e.lngLat.lat;
+  const lng = e.lngLat.lng;
+  const lat = e.lngLat.lat;
+
+  if (builderDrawingActive) {
+    builderPoints.push([lng, lat]);
+    updateBuilderPreview();
+  } else if (drawMode) {
     document.getElementById('c-lng').value = lng.toFixed(6);
     document.getElementById('c-lat').value = lat.toFixed(6);
     if (drawMode === 'point') {
@@ -165,7 +216,12 @@ map.on('click', (e) => {
 });
 
 map.on('dblclick', (e) => {
-  if (drawMode === 'line' && drawPoints.length >= 2) {
+  if (builderDrawingActive) {
+    if (builderPoints.length >= 3) {
+      finishBuilderDrawing();
+      e.originalEvent.preventDefault();
+    }
+  } else if (drawMode === 'line' && drawPoints.length >= 2) {
     finishDrawLine();
     e.originalEvent.preventDefault();
   } else if (drawMode === 'polygon' && drawPoints.length >= 3) {
@@ -184,8 +240,8 @@ function reloadStyle() {
   plottedCount = 0;
   map.setStyle('/api/v1/style.json');
   map.once('style.load', () => {
-    loadLayerList();
     initDrawSource();
+    loadBuiltBuildings();
     showInfo('plotted-info', 'Mapa recargado', 'success');
   });
 }
@@ -198,68 +254,7 @@ function showInfo(id, msg, type) {
   setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
-// ─── Layer Controls ───
-
-async function loadLayerList() {
-  try {
-    const data = await fetch('/api/v1/layers').then(r => r.json());
-    const list = document.getElementById('layer-list');
-    list.innerHTML = '';
-    if (!data.layers || data.layers.length === 0) {
-      list.innerHTML = '<span class="text-muted">Sin capas cargadas.</span>';
-      return;
-    }
-    const styleLayers = map.getStyle().layers || [];
-    data.layers.forEach(layer => {
-      const hasStyleLayer = styleLayers.some(l => l.id.startsWith(layer.name + '-'));
-      if (layerStates[layer.name] === undefined) layerStates[layer.name] = hasStyleLayer;
-      const icon = layer.type.includes('POLYGON') || layer.type === 'GEOMETRY' ? '⬚' : layer.type.includes('LINE') ? '⌇' : '•';
-      const item = document.createElement('div');
-      item.className = 'layer-item';
-      item.innerHTML = `
-        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;flex:1">
-          <span style="opacity:.5">${icon}</span>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${layer.name}">${layer.name}</span>
-          <span class="text-muted" style="font-size:.65rem">${layer.features.toLocaleString()}</span>
-        </div>
-        <div class="toggle ${layerStates[layer.name] ? 'active' : ''}" data-layer="${layer.name}"></div>`;
-      list.appendChild(item);
-      item.querySelector('.toggle').addEventListener('click', function() {
-        toggleLayer(this.dataset.layer, this);
-      });
-    });
-  } catch(e) {
-    document.getElementById('layer-list').innerHTML = '<span class="text-error">Error cargando capas</span>';
-  }
-}
-
-function toggleLayer(name, el) {
-  const on = el.classList.toggle('active');
-  layerStates[name] = on;
-  const styleLayers = map.getStyle().layers || [];
-  const layerIds = styleLayers
-    .filter(l => l.id.startsWith(name + '-') || l.id === name)
-    .map(l => l.id);
-
-  if (on) {
-    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'visible'));
-  } else {
-    layerIds.forEach(id => map.setLayoutProperty(id, 'visibility', 'none'));
-  }
-}
-
-function toggleAllLayers(show) {
-  document.querySelectorAll('.toggle').forEach(el => {
-    const name = el.dataset.layer;
-    if (show && !el.classList.contains('active')) {
-      el.classList.add('active');
-      toggleLayer(name, el);
-    } else if (!show && el.classList.contains('active')) {
-      el.classList.remove('active');
-      toggleLayer(name, el);
-    }
-  });
-}
+// ─── Layer Controls removed as they load automatically ───
 
 // ─── Coordinate Plotting ───
 
@@ -563,6 +558,263 @@ function finishDrawPolygon() {
 function clearDrawPreview() {
   if (map.getSource('draw-preview')) {
     map.getSource('draw-preview').setData({ type: 'FeatureCollection', features: [] });
+  }
+}
+
+// ─── Constructor 3D Logic ───
+
+let builderDrawingActive = false;
+let builderPoints = [];
+let completedPolygon = null;
+
+function toggleBuilderDrawing() {
+  if (builderDrawingActive) {
+    cancelBuilderDrawing();
+  } else {
+    startBuilderDrawing();
+  }
+}
+
+function startBuilderDrawing() {
+  // Desactivar otros modos de dibujo
+  setDrawMode(null);
+  
+  builderDrawingActive = true;
+  builderPoints = [];
+  completedPolygon = null;
+  
+  document.getElementById('btn-draw-builder').textContent = '✋ Cancelar';
+  document.getElementById('btn-draw-builder').className = 'btn btn-danger btn-sm flex-1';
+  document.getElementById('btn-clear-builder').style.display = 'none';
+  document.getElementById('builder-controls').style.display = 'none';
+  
+  map.getCanvas().style.cursor = 'crosshair';
+  clearDrawPreview();
+  showInfo('builder-status', 'Haz click en el mapa para trazar los puntos. Doble click para cerrar.', 'success');
+}
+
+function cancelBuilderDrawing() {
+  builderDrawingActive = false;
+  builderPoints = [];
+  completedPolygon = null;
+  
+  document.getElementById('btn-draw-builder').textContent = '✏️ Dibujar Base';
+  document.getElementById('btn-draw-builder').className = 'btn btn-primary btn-sm flex-1';
+  document.getElementById('btn-clear-builder').style.display = 'none';
+  document.getElementById('builder-controls').style.display = 'none';
+  
+  map.getCanvas().style.cursor = '';
+  clearDrawPreview();
+}
+
+function clearBuilder() {
+  cancelBuilderDrawing();
+}
+
+function updateBuilderPreview() {
+  if (!map.getSource('draw-preview')) return;
+  const features = [];
+  
+  if (builderPoints.length > 0) {
+    if (builderPoints.length >= 3) {
+      const closedPoints = [...builderPoints, builderPoints[0]]; // Cerrar anillo
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [closedPoints] },
+        properties: {}
+      });
+    } else if (builderPoints.length === 2) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: builderPoints },
+        properties: {}
+      });
+    }
+    
+    // Puntos de control individuales
+    builderPoints.forEach((p, i) => {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: p },
+        properties: { id: i + 1 }
+      });
+    });
+  }
+  
+  map.getSource('draw-preview').setData({ type: 'FeatureCollection', features });
+  ensureBuilderDrawLayers();
+}
+
+function ensureBuilderDrawLayers() {
+  ensureDrawLayers();
+  
+  if (!map.getLayer('draw-preview-3d')) {
+    map.addLayer({
+      id: 'draw-preview-3d',
+      type: 'fill-extrusion',
+      source: 'draw-preview',
+      filter: ['==', '$type', 'Polygon'],
+      paint: {
+        'fill-extrusion-color': '#38bdf8',
+        'fill-extrusion-height': 10,
+        'fill-extrusion-base': 0,
+        'fill-extrusion-opacity': 0.8
+      }
+    });
+  }
+}
+
+function updatePreviewStyle() {
+  const height = parseFloat(document.getElementById('b-height').value);
+  const color = document.getElementById('b-color').value;
+  if (map.getLayer('draw-preview-3d')) {
+    map.setPaintProperty('draw-preview-3d', 'fill-extrusion-height', height);
+    map.setPaintProperty('draw-preview-3d', 'fill-extrusion-color', color);
+  }
+}
+
+function onHeightChange(val) {
+  document.getElementById('height-val').textContent = val + 'm';
+  updatePreviewStyle();
+}
+
+function selectSwatch(color) {
+  document.getElementById('b-color').value = color;
+  updatePreviewStyle();
+}
+
+function finishBuilderDrawing() {
+  if (builderPoints.length < 3) return;
+  
+  builderDrawingActive = false;
+  map.getCanvas().style.cursor = '';
+  
+  completedPolygon = {
+    type: 'Polygon',
+    coordinates: [[...builderPoints, builderPoints[0]]]
+  };
+  
+  document.getElementById('btn-draw-builder').textContent = '✏️ Redibujar';
+  document.getElementById('btn-draw-builder').className = 'btn btn-outline btn-sm flex-1';
+  document.getElementById('btn-clear-builder').style.display = 'inline-flex';
+  document.getElementById('builder-controls').style.display = 'block';
+  
+  updatePreviewStyle();
+  
+  showInfo('builder-status', 'Base completada. Modifica la altura y color, y constrúyela.', 'success');
+}
+
+async function saveBuilding() {
+  if (!completedPolygon) {
+    showInfo('builder-status', 'Primero dibuja una base de casa', 'error');
+    return;
+  }
+  
+  const name = document.getElementById('b-name').value.trim() || 'Casa 3D';
+  const height = parseFloat(document.getElementById('b-height').value);
+  const color = document.getElementById('b-color').value;
+  
+  const payload = {
+    name,
+    height,
+    color,
+    geometry: completedPolygon
+  };
+  
+  try {
+    const res = await fetch('/api/v1/buildings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(r => r.json());
+    
+    if (res.status === 'success') {
+      showInfo('builder-status', '¡Casa construida con éxito en el mundo real!', 'success');
+      
+      cancelBuilderDrawing();
+      
+      map.setStyle('/api/v1/style.json');
+      map.once('style.load', () => {
+        initDrawSource();
+        loadBuiltBuildings();
+      });
+    } else {
+      showInfo('builder-status', 'Error al guardar la casa: ' + res.message, 'error');
+    }
+  } catch (err) {
+    showInfo('builder-status', 'Error de red al guardar la casa', 'error');
+  }
+}
+
+async function loadBuiltBuildings() {
+  try {
+    const geojson = await fetch('/api/v1/buildings').then(r => r.json());
+    const list = document.getElementById('built-list');
+    const countSpan = document.getElementById('built-count');
+    
+    if (!geojson.features || geojson.features.length === 0) {
+      list.innerHTML = '<span class="text-muted" style="font-size:0.7rem;text-align:center;padding:10px 0;width:100%">No hay casas en la zona. ¡Comienza a construir!</span>';
+      countSpan.textContent = '0';
+      return;
+    }
+    
+    countSpan.textContent = geojson.features.length;
+    list.innerHTML = '';
+    
+    geojson.features.forEach(f => {
+      const p = f.properties;
+      const item = document.createElement('div');
+      item.className = 'layer-item';
+      item.style.fontSize = '0.7rem';
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;flex:1;cursor:pointer">
+          <div style="width:10px;height:10px;border-radius:50%;background:${p.color};flex-shrink:0"></div>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${p.name}">${p.name}</span>
+          <span class="text-muted">(${p.height}m)</span>
+        </div>
+        <span class="coord-delete" onclick="deleteBuiltBuilding(${p.id}, event)" title="Demoler casa" style="font-size:0.65rem;font-weight:bold;margin-left:4px">✕</span>
+      `;
+      
+      item.querySelector('div').addEventListener('click', () => {
+        if (f.geometry && f.geometry.coordinates && f.geometry.coordinates[0]) {
+          const coords = f.geometry.coordinates[0];
+          let sumLng = 0, sumLat = 0;
+          coords.forEach(pt => { sumLng += pt[0]; sumLat += pt[1]; });
+          const centerLng = sumLng / coords.length;
+          const centerLat = sumLat / coords.length;
+          map.flyTo({ center: [centerLng, centerLat], zoom: 17.5, pitch: 60, bearing: -15 });
+        }
+      });
+      
+      list.appendChild(item);
+    });
+  } catch (e) {
+    document.getElementById('built-list').innerHTML = '<span class="text-error">Error al cargar construcciones</span>';
+  }
+}
+
+async function deleteBuiltBuilding(id, event) {
+  if (event) event.stopPropagation();
+  if (!confirm('¿Estás seguro de que deseas demoler/eliminar esta casa 3D?')) return;
+  
+  try {
+    const res = await fetch(`/api/v1/buildings/${id}`, {
+      method: 'DELETE'
+    }).then(r => r.json());
+    
+    if (res.status === 'success') {
+      showInfo('builder-status', 'Casa demolida correctamente', 'success');
+      
+      map.setStyle('/api/v1/style.json');
+      map.once('style.load', () => {
+        initDrawSource();
+        loadBuiltBuildings();
+      });
+    } else {
+      showInfo('builder-status', 'Error al eliminar: ' + res.message, 'error');
+    }
+  } catch (err) {
+    showInfo('builder-status', 'Error de red al eliminar', 'error');
   }
 }
 

@@ -273,6 +273,13 @@ async function initDashboard() {
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
     map.addControl(new maplibregl.FullscreenControl());
+    map.addControl(new maplibregl.GeolocateControl({
+      positionOptions: {
+        enableHighAccuracy: true
+      },
+      trackUserLocation: true,
+      showUserLocation: true
+    }));
   }
 
   try {
