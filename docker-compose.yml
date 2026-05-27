@@ -4,8 +4,10 @@ services:
     image: postgis/postgis:15-3.4
     restart: unless-stopped
     shm_size: 1gb
-    ports:
-      - "${DB_PORT:-5433}:5432"
+    # No host port binding — accessed internally via map-net
+    # For local dev, set DB_PORT in .env and uncomment:
+    # ports:
+    #   - "${DB_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mapengine}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mapengine123}
@@ -73,8 +75,10 @@ services:
   gateway:
     image: nginx:alpine
     restart: unless-stopped
-    ports:
-      - "${GATEWAY_PORT:-8085}:80"
+    # No host port binding — Dokploy/Traefik handles external routing
+    # For local dev, set GATEWAY_PORT in .env and uncomment:
+    # ports:
+    #   - "${GATEWAY_PORT:-8080}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
