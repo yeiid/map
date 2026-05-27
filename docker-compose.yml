@@ -34,7 +34,6 @@ services:
   # ─── Vector Tile Server (Martin) ──────────────────────────────────────────
   tiles:
     image: maplibre/martin:latest
-    container_name: map-tiles
     restart: unless-stopped
     depends_on:
       db:
@@ -51,7 +50,6 @@ services:
   manager:
     build:
       context: .
-    container_name: map-manager
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
@@ -74,7 +72,6 @@ services:
   # ─── Reverse Proxy (The Efficiency Layer) ─────────────────────────────────
   gateway:
     image: nginx:alpine
-    container_name: map-gateway
     restart: unless-stopped
     ports:
       - "8080:80"
