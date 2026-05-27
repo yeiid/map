@@ -2,7 +2,6 @@ services:
   # ─── Spatial Database ────────────────────────────────────────────────────────
   db:
     image: postgis/postgis:15-3.4
-    container_name: map-db
     restart: unless-stopped
     shm_size: 1gb
     ports:
