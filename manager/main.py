@@ -240,6 +240,35 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
 async def root():
     return RedirectResponse(url="/docs")
 
+@app.get("/api/v1/health")
+async def health_check():
+    """Endpoint de diagnóstico sin autenticación."""
+    import glob
+    data_files = []
+    if os.path.exists(DATA_DIR):
+        data_files = [f for f in os.listdir(DATA_DIR) if not f.startswith('.')]
+    users_exist = os.path.exists(USERS_PATH)
+    users_count = len(load_users()) if users_exist else 0
+    db_ok = False
+    layer_count = 0
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT COUNT(*) FROM geometry_columns WHERE f_table_schema = 'public'")).fetchone()
+            layer_count = row[0]
+            db_ok = True
+    except Exception as e:
+        logger.error(f"Health check DB error: {e}")
+    return {
+        "status": "ok",
+        "data_dir_exists": os.path.exists(DATA_DIR),
+        "data_files": data_files,
+        "users_file_exists": users_exist,
+        "users_count": users_count,
+        "db_connected": db_ok,
+        "postgis_layers": layer_count,
+        "martin_url": MARTIN_URL,
+    }
+
 @app.get("/preview", response_class=HTMLResponse)
 async def preview():
     with open("static/public.html") as f:
@@ -616,15 +645,21 @@ async def list_layers():
 
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(form: OAuth2PasswordRequestForm = Depends()):
-    users = load_users()
-    user = users.get(form.username)
-    if not user or not pwd_context.verify(form.password, user["password"]):
-        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrectos")
-    await track_usage("login", form.username)
-    async with _usage_lock:
-        if _usage_cache:
-            _usage_cache["total_logins"] += 1
-    return {"access_token": create_access_token(form.username), "token_type": "bearer"}
+    try:
+        users = load_users()
+        user = users.get(form.username)
+        if not user or not pwd_context.verify(form.password, user["password"]):
+            raise HTTPException(status_code=400, detail="Usuario o contraseña incorrectos")
+        await track_usage("login", form.username)
+        async with _usage_lock:
+            if _usage_cache:
+                _usage_cache["total_logins"] += 1
+        return {"access_token": create_access_token(form.username), "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en login: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno en login: {str(e)}")
 
 @app.get("/api/v1/auth/me", response_model=UserOut)
 async def me(username: str = Depends(get_current_user)):
