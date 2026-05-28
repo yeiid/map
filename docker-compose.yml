@@ -56,8 +56,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mapengine}:${POSTGRES_PASSWORD:-mapengine123}@db:5432/${POSTGRES_DB:-mapdb}
       MARTIN_URL: http://tiles:3000
-      PUBLIC_MARTIN_URL: ${PUBLIC_MARTIN_URL}
-      SECRET_KEY: ${SECRET_KEY}
+      PUBLIC_MARTIN_URL: ${PUBLIC_MARTIN_URL:-http://localhost/tiles/}
+      SECRET_KEY: ${SECRET_KEY:-neuraljira-change-this-key-to-32-bytes-in-production}
     volumes:
       - ./styles:/app/styles
       - ./fonts:/app/fonts
