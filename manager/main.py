@@ -338,10 +338,8 @@ async def get_style(request: Request):
             rows_all = list(conn.execute(text("""
                 SELECT gc.f_table_name, gc.type
                 FROM geometry_columns gc
-                LEFT JOIN pg_stat_user_tables ps ON ps.relname = gc.f_table_name AND ps.schemaname = gc.f_table_schema
                 WHERE gc.f_table_schema = 'public'
                   AND gc.f_table_name NOT LIKE '%_staging'
-                  AND COALESCE(ps.n_live_tup, 0) > 0
             """)))
 
             # Filtrar dynamic_buildings de las capas vectoriales estándar
