@@ -1,4 +1,4 @@
-import os, json, uuid, time, asyncio, shutil, logging
+import os, json, uuid, time, asyncio, shutil, logging, re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -99,12 +99,41 @@ _style_cache: dict = {"data": None, "ts": 0.0}
 def invalidate_style_cache():
     _style_cache["ts"] = 0.0
 
+# ─── Freemium Limits ──────────────────────────────────────────────────────────
+
+FREEMIUM_BUILDING_LIMIT = 10  # Máximo edificios para cuentas gratuitas
+FREEMIUM_LABEL = "free"
+
+def get_account_type(username: str) -> str:
+    """Obtiene el tipo de cuenta: 'free', 'pro', o 'admin' -> sin límites."""
+    users = load_users()
+    if username in users:
+        return users[username].get("account_type", "free")
+    return "free"
+
+def can_create_building(username: str) -> tuple[bool, int]:
+    """Verifica si el usuario puede crear más edificios. Retorna (permitido, count_actual)."""
+    account_type = get_account_type(username)
+    if account_type in ("admin", "pro"):
+        return True, 0  # Sin límites
+    
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT COUNT(*) FROM dynamic_buildings")).fetchone()
+        count = row[0] if row else 0
+    
+    return count < FREEMIUM_BUILDING_LIMIT, count
+
 # ─── Users ───────────────────────────────────────────────────────────────────
 
 def load_users() -> dict:
     try:
         with open(USERS_PATH) as f:
-            return json.load(f)
+            data = json.load(f)
+            # Migrar usuarios existentes sin account_type
+            for u in data.values():
+                if "account_type" not in u:
+                    u["account_type"] = "free"
+            return data
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -118,6 +147,7 @@ def init_admin():
         users["admin"] = {
             "password": pwd_context.hash("admin123"),
             "role": "admin",
+            "account_type": "admin",  # Admin sin límites
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         save_users(users)
@@ -188,6 +218,10 @@ async def startup():
             """))
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS sidx_dynamic_buildings_geom ON public.dynamic_buildings USING gist(geom);
+            """))
+            conn.execute(text("""
+                ALTER TABLE public.dynamic_buildings
+                ADD COLUMN IF NOT EXISTS "user" VARCHAR(255);
             """))
             conn.commit()
             logger.info("✅ Tabla dynamic_buildings e índice espacial GIST asegurados en PostGIS")
@@ -272,6 +306,11 @@ async def health_check():
 @app.get("/preview", response_class=HTMLResponse)
 async def preview():
     with open("static/public.html") as f:
+        return HTMLResponse(f.read())
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page():
+    with open("static/profile.html") as f:
         return HTMLResponse(f.read())
 
 def _get_base_url(request: Request) -> str:
@@ -669,6 +708,30 @@ async def me(username: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     return UserOut(username=username, role=u["role"], created_at=u.get("created_at", ""))
 
+@app.get("/api/v1/users/me")
+async def users_me(username: str = Depends(get_current_user)):
+    """Perfil del usuario autenticado con conteo de casas construidas."""
+    users = load_users()
+    u = users.get(username)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text('SELECT COUNT(*) FROM public.dynamic_buildings WHERE "user" = :u'),
+                {"u": username},
+            ).fetchone()
+            count = row[0] if row else 0
+    except Exception:
+        count = 0
+    return {
+        "username": username,
+        "role": u.get("role", "user"),
+        "account_type": u.get("account_type", "free"),
+        "created_at": u.get("created_at", ""),
+        "building_count": count,
+    }
+
 @app.post("/api/v1/auth/change-password")
 async def change_password(old: str, new: str, username: str = Depends(get_current_user)):
     users = load_users()
@@ -678,6 +741,53 @@ async def change_password(old: str, new: str, username: str = Depends(get_curren
     u["password"] = pwd_context.hash(new)
     save_users(users)
     return {"status": "ok"}
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,30}$")
+PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$")
+
+@app.get("/api/v1/auth/check-username")
+async def check_username(username: str = ""):
+    """Verifica disponibilidad y formato de un nombre de usuario."""
+    clean = username.strip()
+    available = bool(USERNAME_RE.match(clean)) and clean not in load_users()
+    return {"username": clean, "available": available}
+
+@app.post("/api/v1/auth/register")
+async def register(req: RegisterRequest):
+    """Registro público de usuarios. Crea la cuenta y devuelve un JWT."""
+    username = req.username.strip()
+    password = req.password
+
+    if not USERNAME_RE.match(username):
+        raise HTTPException(
+            status_code=400,
+            detail="Usuario inválido: 3-30 caracteres, solo letras, números y _")
+    if not PASSWORD_RE.match(password):
+        raise HTTPException(
+            status_code=400,
+            detail="La contraseña debe tener al menos 8 caracteres e incluir mayúscula, minúscula y número")
+
+    users = load_users()
+    if username in users:
+        raise HTTPException(status_code=409, detail="El usuario ya existe")
+
+    users[username] = {
+        "password": pwd_context.hash(password),
+        "role": "user",
+        "account_type": "free",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_users(users)
+    await track_usage("register", username)
+    return {
+        "status": "success",
+        "access_token": create_access_token(username),
+        "token_type": "bearer",
+    }
 
 # ─── Admin Endpoints ──────────────────────────────────────────────────────────
 
@@ -911,8 +1021,93 @@ class BuildingCreate(BaseModel):
     color: str
     geometry: dict
 
+@app.get("/api/v1/billing/status")
+async def billing_status(request: Request, token: Optional[str] = Depends(oauth2_scheme)):
+    """Verifica el estado de suscripción y límites. Sin auth: muestra conteo global."""
+    if token:
+        username = verify_token(token)
+        if username:
+            account_type = get_account_type(username)
+            if account_type in ("admin", "pro"):
+                return {
+                    "status": "success",
+                    "account_type": account_type,
+                    "building_limit": None,
+                    "building_count": 0
+                }
+            _, count = can_create_building(username)
+            return {
+                "status": "success",
+                "account_type": "free",
+                "building_limit": FREEMIUM_BUILDING_LIMIT,
+                "building_count": count,
+                "remaining": FREEMIUM_BUILDING_LIMIT - count,
+                "can_create_more": count < FREEMIUM_BUILDING_LIMIT
+            }
+    
+    # Sin autenticación: mostrar conteo global
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT COUNT(*) FROM dynamic_buildings")).fetchone()
+        count = row[0] if row else 0
+    
+    return {
+        "status": "success",
+        "account_type": "anonymous",
+        "building_limit": FREEMIUM_BUILDING_LIMIT,
+        "building_count": count,
+        "can_create_more": count < FREEMIUM_BUILDING_LIMIT
+    }
+
+# ─── Stripe Checkout ─────────────────────────────────────────────────────
+
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+
+class SubscribeRequest(BaseModel):
+    username: str
+    success_url: str = "https://map.neuraljira.tech/?upgraded=success"
+    cancel_url: str = "https://map.neuraljira.tech/?upgraded=cancel"
+
+@app.post("/api/v1/billing/subscribe")
+async def create_checkout_session(req: SubscribeRequest, token: Optional[str] = Depends(oauth2_scheme)):
+    """Crea sesión de checkout de Stripe para upgrade a PRO."""
+    username = verify_token(token) if token else None
+    if not username:
+        raise HTTPException(status_code=401, detail="Autenticación requerida para suscripción")
+    
+    if not STRIPE_SECRET_KEY:
+        # Modo mock para desarrollo
+        users = load_users()
+        if username in users:
+            users[username]["account_type"] = "pro"
+            users[username]["subscription_status"] = "mock_active"
+            users[username]["upgraded_at"] = datetime.now(timezone.utc).isoformat()
+            save_users(users)
+        return {"status": "success", "message": "Modo mock: cuenta actualizada a PRO", "redirect_url": "/preview"}
+    
+    # TODO: Implementar con API real de Stripe cuando esté disponible
+    # stripe.checkout.Session.create(...)
+    return {"status": "error", "message": "Stripe integration pending - using mock mode"}
+
+@app.get("/api/v1/billing/plans")
+async def list_plans():
+    """Lista planes de suscripción disponibles."""
+    return {
+        "status": "success",
+        "plans": [
+            {
+                "id": "pro_monthly",
+                "name": "NeuralJira PRO Mensual",
+                "description": "Edificios ilimitados • Sin publicidad • Soporte prioritario",
+                "price": "$9.99 USD",
+                "features": ["Edificios 3D ilimitados", "Sin anuncios", "Soporte prioritario", "Tiles sin marca de agua"]
+            }
+        ]
+    }
+
 @app.post("/api/v1/buildings")
-async def create_building(building: BuildingCreate):
+async def create_building(building: BuildingCreate, username: str = Depends(get_current_user)):
+    """Crea un edificio 3D asociado al usuario autenticado (login obligatorio)."""
     try:
         geom_json = json.dumps(building.geometry)
         with engine.connect() as conn:
@@ -921,19 +1116,21 @@ async def create_building(building: BuildingCreate):
                 raise HTTPException(status_code=400, detail="La geometría debe ser de tipo Polygon")
             
             result = conn.execute(text("""
-                INSERT INTO public.dynamic_buildings (name, height, color, geom)
-                VALUES (:name, :height, :color, ST_SetSRID(ST_GeomFromGeoJSON(:geom_json), 4326))
+                INSERT INTO public.dynamic_buildings (name, height, color, geom, "user")
+                VALUES (:name, :height, :color, ST_SetSRID(ST_GeomFromGeoJSON(:geom_json), 4326), :user)
                 RETURNING id, name, height, color, ST_AsGeoJSON(geom) as geom_json
             """), {
                 "name": building.name,
                 "height": building.height,
                 "color": building.color,
-                "geom_json": geom_json
+                "geom_json": geom_json,
+                "user": username,
             })
             row = result.fetchone()
             conn.commit()
             
         invalidate_style_cache()
+        await track_usage("create_building", username)
         
         return {
             "status": "success",
@@ -942,6 +1139,7 @@ async def create_building(building: BuildingCreate):
                 "name": row[1],
                 "height": row[2],
                 "color": row[3],
+                "user": username,
                 "geometry": json.loads(row[4])
             }
         }
@@ -952,20 +1150,39 @@ async def create_building(building: BuildingCreate):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/api/v1/buildings")
-async def list_buildings():
+async def list_buildings(mine: bool = False, token: Optional[str] = Depends(oauth2_scheme)):
+    username = verify_token(token) if token else None
     try:
         with engine.connect() as conn:
-            rows = conn.execute(text("""
-                SELECT 
-                    id, 
-                    name, 
-                    height, 
-                    color, 
-                    ST_AsGeoJSON(geom) AS geom_json,
-                    created_at 
-                FROM public.dynamic_buildings
-                ORDER BY created_at DESC
-            """))
+            if mine:
+                if not username:
+                    raise HTTPException(status_code=401, detail="Autenticación requerida para ver tus casas")
+                rows = conn.execute(text("""
+                    SELECT 
+                        id, 
+                        name, 
+                        height, 
+                        color, 
+                        ST_AsGeoJSON(geom) AS geom_json,
+                        created_at,
+                        "user"
+                    FROM public.dynamic_buildings
+                    WHERE "user" = :u
+                    ORDER BY created_at DESC
+                """), {"u": username}).fetchall()
+            else:
+                rows = conn.execute(text("""
+                    SELECT 
+                        id, 
+                        name, 
+                        height, 
+                        color, 
+                        ST_AsGeoJSON(geom) AS geom_json,
+                        created_at,
+                        "user"
+                    FROM public.dynamic_buildings
+                    ORDER BY created_at DESC
+                """)).fetchall()
             features = []
             for r in rows:
                 geom = json.loads(r[4])
@@ -978,6 +1195,7 @@ async def list_buildings():
                         "name": r[1],
                         "height": r[2],
                         "color": r[3],
+                        "user": r[6],
                         "created_at": r[5].isoformat() if r[5] else None
                     }
                 })
@@ -985,6 +1203,8 @@ async def list_buildings():
             "type": "FeatureCollection",
             "features": features
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error al listar edificaciones 3D: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})

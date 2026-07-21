@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi Perfil · NeuralJira</title>
+<style>
+:root{--bg:#0f172a;--sidebar:#1e293b;--accent:#38bdf8;--success:#22c55e;--error:#ef4444;--warning:#f59e0b;--text:#f8fafc;--muted:#94a3b8;--card:#334155;--border:rgba(255,255,255,0.08)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#15233b,#0f172a 60%);color:var(--text);min-height:100vh;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.page{max-width:640px;width:100%}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.topbar .brand{font-weight:800;font-size:.95rem;letter-spacing:.02em}
+.topbar .brand span{color:var(--accent)}
+.card{background:rgba(15,23,42,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:16px;padding:22px}
+.card-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px;font-weight:700}
+/* profile header */
+.profile-head{display:flex;align-items:center;gap:16px}
+.avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#0ea5e9);color:#04263a;font-weight:800;font-size:1.7rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:uppercase}
+.profile-name{font-size:1.25rem;font-weight:800}
+.role-badge{display:inline-block;font-size:.62rem;padding:2px 9px;border-radius:20px;background:rgba(56,189,248,.15);color:var(--accent);font-weight:600;margin-left:8px;vertical-align:middle}
+.profile-since{font-size:.74rem;color:var(--muted);margin-top:3px}
+/* stats */
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0}
+.stat-card{background:var(--bg);border-radius:12px;padding:16px;text-align:center}
+.stat-card .n{font-size:1.7rem;font-weight:800;color:var(--accent);line-height:1}
+.stat-card .l{font-size:.66rem;color:var(--muted);margin-top:6px}
+.stat-card .n.success{color:var(--success)}
+.stat-card .n.warning{color:var(--warning)}
+/* houses */
+.house-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:12px;margin-bottom:8px}
+.house-swatch{width:14px;height:14px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,.08)}
+.house-info{flex:1;min-width:0}
+.house-name{font-weight:700;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.house-meta{font-size:.68rem;color:var(--muted);margin-top:2px}
+.empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:.8rem;background:var(--bg);border-radius:12px}
+/* buttons */
+.btn{padding:9px 16px;border:none;border-radius:9px;font-weight:600;cursor:pointer;transition:all .15s;font-size:.8rem;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-success{background:var(--success);color:#fff}
+.btn-danger{background:var(--error);color:#fff}
+.btn-danger:hover{filter:brightness(1.08)}
+.btn-outline{background:transparent;border:1px solid #475569;color:var(--text)}
+.btn-outline:hover{background:rgba(255,255,255,0.06)}
+.btn-sm{padding:6px 12px;font-size:.74rem}
+.btn.loading{opacity:.7;pointer-events:none;position:relative}
+.btn.loading::after{content:'';position:absolute;right:10px;top:50%;width:12px;height:12px;margin-top:-6px;border:2px solid rgba(0,0,0,.25);border-top-color:#04263a;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+input{width:100%;padding:10px 12px;border-radius:9px;border:1px solid #475569;background:var(--bg);color:var(--text);font-size:.82rem;outline:none;transition:.15s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,189,248,0.2)}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.72rem;color:var(--muted);margin-bottom:5px;font-weight:600}
+.status-msg{padding:8px 12px;border-radius:8px;font-size:.76rem;display:none;margin-top:10px}
+.status-msg.error{display:block;background:rgba(239,68,68,0.15);color:var(--error);border:1px solid rgba(239,68,68,0.25)}
+.status-msg.success{display:block;background:rgba(34,197,94,0.15);color:var(--success);border:1px solid rgba(34,197,94,0.25)}
+.muted{color:var(--muted)}
+.row-between{display:flex;justify-content:space-between;align-items:center}
+.mt{margin-top:14px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <div class="brand">Neural<span>Jira</span> · Perfil</div>
+    <a href="/preview">← Volver al mapa</a>
+  </div>
+
+  <!-- LOGIN VIEW -->
+  <div class="card" id="login-view" style="display:none">
+    <div class="card-title">Inicia sesión para ver tu perfil</div>
+    <form id="login-form" onsubmit="return doLogin(event)">
+      <div class="form-group">
+        <label>Usuario</label>
+        <input id="l-user" type="text" autocomplete="username" placeholder="tu_usuario" required>
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input id="l-pass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+      <button class="btn btn-primary" id="l-btn" type="submit" style="width:100%">Entrar</button>
+      <div class="status-msg" id="l-msg"></div>
+    </form>
+    <div class="muted mt" style="font-size:.74rem;text-align:center">¿No tienes cuenta? Regístrate desde el <a href="/preview">mapa</a>.</div>
+  </div>
+
+  <!-- PROFILE VIEW -->
+  <div id="profile-view" style="display:none">
+    <div class="card">
+      <div class="profile-head">
+        <div class="avatar" id="p-avatar">@</div>
+        <div style="flex:1;min-width:0">
+          <div class="profile-name"><span id="p-name">@usuario</span><span class="role-badge" id="p-role">Usuario</span></div>
+          <div class="profile-since" id="p-since">Miembro desde —</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="logout()">🚪 Salir</button>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="n" id="p-count">0</div>
+          <div class="l">🏠 Casas construidas</div>
+        </div>
+        <div class="stat-card">
+          <div class="n success">★</div>
+          <div class="l" id="p-type">Cuenta Free</div>
+        </div>
+        <div class="stat-card">
+          <div class="n warning" id="p-rank">—</div>
+          <div class="l">Ranking constructores</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt">
+      <div class="row-between" style="margin-bottom:12px">
+        <div class="card-title" style="margin:0">🏘️ Mis casas (<span id="houses-count">0</span>)</div>
+        <a href="/preview" class="btn btn-success btn-sm">+ Construir</a>
+      </div>
+      <div id="houses"><div class="empty">Cargando…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN_KEY = 'nj_token';
+function getToken(){ return localStorage.getItem(TOKEN_KEY) || ''; }
+function getAuthHeaders(){ const t=getToken(); return t ? {'Authorization':'Bearer '+t} : {}; }
+function isLoggedIn(){ return !!getToken(); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function logout(){ localStorage.removeItem(TOKEN_KEY); location.href='/profile'; }
+
+function fmtDate(iso){
+  if(!iso) return '—';
+  const dt = new Date(iso);
+  if(isNaN(dt)) return '—';
+  return dt.toLocaleDateString('es', {day:'2-digit', month:'short', year:'numeric'}) + ' · ' + dt.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
+}
+
+async function doLogin(e){
+  e.preventDefault();
+  const u = document.getElementById('l-user').value.trim();
+  const p = document.getElementById('l-pass').value;
+  const btn = document.getElementById('l-btn');
+  const msg = document.getElementById('l-msg');
+  msg.className = 'status-msg';
+  btn.classList.add('loading');
+  try {
+    const r = await fetch('/api/v1/auth/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:`username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`
+    });
+    const d = await r.json();
+    if(r.ok && d.access_token){
+      localStorage.setItem(TOKEN_KEY, d.access_token);
+      location.href = '/profile';
+    } else {
+      msg.textContent = d.detail || 'No se pudo iniciar sesión';
+      msg.className = 'status-msg error';
+    }
+  } catch(err){
+    msg.textContent = 'Error de red';
+    msg.className = 'status-msg error';
+  } finally {
+    btn.classList.remove('loading');
+  }
+  return false;
+}
+
+async function loadProfile(){
+  const r = await fetch('/api/v1/users/me', { headers: getAuthHeaders() });
+  if(r.status === 401){ logout(); return; }
+  const d = await r.json();
+  document.getElementById('p-avatar').textContent = (d.username ? d.username[0] : '?').toUpperCase();
+  document.getElementById('p-name').textContent = '@' + (d.username || 'usuario');
+  document.getElementById('p-role').textContent = d.role === 'admin' ? 'Administrador' : 'Usuario';
+  document.getElementById('p-type').textContent = (d.account_type === 'pro') ? 'Cuenta PRO' : 'Cuenta Free';
+  document.getElementById('p-count').textContent = d.building_count ?? 0;
+  if(d.created_at){
+    const dt = new Date(d.created_at);
+    if(!isNaN(dt)) document.getElementById('p-since').textContent = 'Miembro desde ' + dt.toLocaleDateString('es',{day:'2-digit',month:'long',year:'numeric'});
+  }
+  try {
+    const rr = await fetch('/api/v1/buildings', { headers: getAuthHeaders() });
+    const all = await rr.json();
+    const total = all.features ? all.features.length : 0;
+    const mine = d.building_count || 0;
+    document.getElementById('p-rank').textContent = total ? Math.max(1, Math.round((mine/total)*100)) + '%' : '—';
+  } catch(e){}
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('profile-view').style.display = 'block';
+}
+
+async function loadMyHouses(){
+  const list = document.getElementById('houses');
+  const cnt = document.getElementById('houses-count');
+  try {
+    const r = await fetch('/api/v1/buildings?mine=true', { headers: getAuthHeaders() });
+    const geo = await r.json();
+    if(!geo.features || !geo.features.length){
+      list.innerHTML = '<div class="empty">Aún no has construido casas. <a href="/preview">Ve al mapa</a> y crea tu primera construcción 3D.</div>';
+      cnt.textContent = '0';
+      return;
+    }
+    cnt.textContent = geo.features.length;
+    list.innerHTML = '';
+    geo.features.forEach(f => {
+      const p = f.properties;
+      const name = esc(p.name || 'Casa 3D');
+      const color = esc(p.color || '#38bdf8');
+      const item = document.createElement('div');
+      item.className = 'house-item';
+      item.innerHTML = `
+        <div class="house-swatch" style="background:${color}"></div>
+        <div class="house-info">
+          <div class="house-name" title="${name}">${name}</div>
+          <div class="house-meta">📏 ${esc(p.height||'?')} m · 🗓️ ${fmtDate(p.created_at)}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteHouse(${p.id})">Demoler</button>
+      `;
+      list.appendChild(item);
+    });
+  } catch(e){
+    list.innerHTML = '<div class="empty text-error">Error al cargar tus casas</div>';
+  }
+}
+
+async function deleteHouse(id){
+  if(!confirm('¿Estás seguro de que deseas demoler/eliminar esta casa 3D?')) return;
+  try {
+    const r = await fetch('/api/v1/buildings/' + id, { method:'DELETE' });
+    const d = await r.json();
+    if(d.status === 'success'){
+      await loadMyHouses();
+      await loadProfile();
+    } else {
+      alert(d.message || 'No se pudo eliminar');
+    }
+  } catch(e){
+    alert('Error de red');
+  }
+}
+
+(async function init(){
+  if(!isLoggedIn()){
+    document.getElementById('login-view').style.display = 'block';
+    document.getElementById('profile-view').style.display = 'none';
+    return;
+  }
+  await loadProfile();
+  await loadMyHouses();
+})();
+</script>
+</body>
+</html>

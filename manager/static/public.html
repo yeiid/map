@@ -11,6 +11,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
 #map{width:100%;height:100%}
+/* ─── Layout ─── */
 .control-panel{position:absolute;top:10px;left:10px;z-index:10;display:flex;flex-direction:column;gap:8px;max-width:320px}
 .panel{background:rgba(15,23,42,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font-size:.8rem}
 .panel-title{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;font-weight:600}
@@ -60,11 +61,46 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
 ::-webkit-scrollbar{width:8px}
 ::-webkit-scrollbar-track{background:rgba(0,0,0,0.15);border-radius:4px}
 ::-webkit-scrollbar-thumb{background:#475569;border-radius:4px;transition:background 0.2s}
-::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+ ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+/* ─── Panels & Backdrop ─── */
+.panel-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.45);backdrop-filter:blur(2px);z-index:9;display:none;opacity:0;transition:opacity .18s}
+.panel-backdrop.show{display:block;opacity:1}
+.panel{position:relative;transition:transform .18s ease,opacity .18s ease}
+.panel.open{animation:panelIn .18s ease}
+@keyframes panelIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.panel-close{position:absolute;top:8px;right:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;line-height:1;padding:4px 6px;border-radius:6px;transition:.15s}
+.panel-close:hover{background:rgba(255,255,255,0.08);color:var(--text)}
+.panel-title{padding-right:24px}
+/* ─── Auth ─── */
+.auth-tabs{display:flex;gap:4px;margin-bottom:10px;background:var(--bg);border-radius:8px;padding:3px}
+.auth-tab{flex:1;padding:6px;border:none;background:transparent;color:var(--muted);font-weight:600;font-size:.74rem;border-radius:6px;cursor:pointer;transition:.15s}
+.auth-tab.active{background:var(--accent);color:var(--bg)}
+.form-group{margin-bottom:8px}
+.form-group label{display:block;font-size:.7rem;color:var(--muted);margin-bottom:3px;font-weight:600}
+.form-group input{width:100%}
+.field-hint{font-size:.64rem;margin-top:3px;min-height:.8rem;color:var(--muted)}
+.field-hint.ok{color:var(--success)}
+.field-hint.err{color:var(--error)}
+.field-hint.info{color:var(--accent)}
+.pw-strength{height:5px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:4px}
+.pw-strength .pw-bar{height:100%;width:0;transition:width .2s,background .2s}
+.checkbox{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--muted);margin:4px 0 8px;cursor:pointer}
+.checkbox input{width:auto}
+.btn.loading{opacity:.7;pointer-events:none;position:relative}
+.btn.loading::after{content:'';position:absolute;right:8px;top:50%;width:12px;height:12px;margin-top:-6px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ─── Profile ─── */
+.avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#0ea5e9);color:#04263a;font-weight:800;font-size:1.05rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;text-transform:uppercase}
+.profile-stat{background:var(--bg);border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;margin:10px 0}
+.profile-stat .stat-num{font-size:1.4rem;font-weight:800;color:var(--accent);line-height:1}
+.profile-stat .stat-label{font-size:.7rem;color:var(--muted)}
+.built-filter{display:flex;gap:4px;margin-top:10px}
 </style>
 </head>
 <body>
 <div id="map"></div>
+
+<div class="panel-backdrop" id="panel-backdrop" onclick="closePanels()"></div>
 
 <div class="control-panel" id="panel-container">
   <div class="panel">
@@ -73,8 +109,58 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
       <button class="btn btn-outline btn-sm" onclick="reloadStyle()">🔄 Recargar Mapa</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-      <button class="btn btn-outline btn-sm" onclick="togglePanel('coord-panel')">📍 Coordenadas</button>
-      <button class="btn btn-outline btn-sm" onclick="togglePanel('builder-panel')">🏠 Constructor 3D</button>
+      <button class="btn btn-outline btn-sm" onclick="openPanel('coord-panel')">📍 Coordenadas</button>
+      <button class="btn btn-outline btn-sm" onclick="openPanel('builder-panel')">🏠 Constructor 3D</button>
+    </div>
+    <div class="flex gap-4 mt-8">
+      <button class="btn btn-outline btn-sm flex-1" onclick="openPanel('user-panel')">👤 Cuenta</button>
+    </div>
+  </div>
+
+  <div class="panel" id="user-panel" style="display:none">
+    <button class="panel-close" onclick="closePanels()" title="Cerrar">✕</button>
+    <div class="panel-title">👤 Mi Cuenta</div>
+    <div id="user-logged-out">
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">🔑 Entrar</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">✨ Crear</button>
+      </div>
+      <div class="form-group">
+        <label>Usuario</label>
+        <input type="text" id="u-username" placeholder="tu_usuario" autocomplete="username" oninput="onAuthInput()">
+        <div class="field-hint" id="u-username-hint"></div>
+      </div>
+      <div class="form-group">
+        <label>Clave</label>
+        <input type="password" id="u-password" placeholder="••••••••" autocomplete="current-password" oninput="onAuthInput()">
+        <div class="pw-strength" id="pw-strength"><div class="pw-bar"></div></div>
+        <div class="field-hint" id="u-password-hint"></div>
+      </div>
+      <div class="form-group" id="register-extra" style="display:none">
+        <label>Repetir clave</label>
+        <input type="password" id="u-password2" placeholder="••••••••" autocomplete="new-password" oninput="onAuthInput()">
+        <div class="field-hint" id="u-password2-hint"></div>
+      </div>
+      <label class="checkbox" id="terms-row" style="display:none">
+        <input type="checkbox" id="u-terms"> Acepto los <a href="#" style="color:var(--accent)">términos</a>
+      </label>
+      <button class="btn btn-primary btn-sm flex-1 mt-8" id="auth-submit" onclick="submitAuth()">🔑 Entrar</button>
+      <div id="user-status" class="status-msg"></div>
+    </div>
+    <div id="user-logged-in" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div class="avatar" id="user-avatar">@</div>
+        <div style="flex:1;min-width:0">
+          <div class="text-accent" id="user-name" style="font-weight:700;font-size:0.95rem">@usuario</div>
+          <div class="text-muted" id="user-since" style="font-size:0.66rem">Miembro desde —</div>
+        </div>
+      </div>
+      <div class="profile-stat">
+        <div class="stat-num" id="user-count">0</div>
+        <div class="stat-label">🏠 Casas construidas</div>
+      </div>
+      <a href="/profile" class="btn btn-outline btn-sm mt-8" style="width:100%;text-align:center;justify-content:center">👤 Ver perfil completo</a>
+      <button class="btn btn-outline btn-sm mt-8" style="width:100%" onclick="logout()">🚪 Cerrar sesión</button>
     </div>
   </div>
 
@@ -120,6 +206,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
     
     <div class="flex gap-4 mb-8">
       <button class="btn btn-primary btn-sm flex-1" id="btn-draw-builder" onclick="toggleBuilderDrawing()">✏️ Dibujar Base</button>
+      <button class="btn btn-success btn-sm" id="btn-finish-builder" onclick="finishBuilderDrawing()" style="display:none">✅ Cerrar Polígono</button>
       <button class="btn btn-outline btn-sm" onclick="clearBuilder()" id="btn-clear-builder" style="display:none">🗑️ Limpiar</button>
     </div>
 
@@ -156,6 +243,10 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
     <div id="builder-status" class="status-msg"></div>
 
     <div class="panel-title" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">🏘️ Construcciones (<span id="built-count">0</span>)</div>
+    <div class="built-filter">
+      <button class="auth-tab active" id="filter-all" onclick="setBuiltFilter('all')">Todas</button>
+      <button class="auth-tab" id="filter-mine" onclick="setBuiltFilter('mine')">Mis casas</button>
+    </div>
     <div id="built-list" style="max-height:150px;overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:4px">
       <span class="text-muted">Cargando construcciones...</span>
     </div>
@@ -230,9 +321,38 @@ map.on('dblclick', (e) => {
   }
 });
 
-function togglePanel(id) {
-  const el = document.getElementById(id);
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+// ─── Panel System (mutually exclusive) ───
+const PANEL_IDS = ['coord-panel', 'builder-panel', 'user-panel'];
+
+function openPanel(id) {
+  PANEL_IDS.forEach(pid => {
+    const el = document.getElementById(pid);
+    if (!el) return;
+    if (pid === id) {
+      el.style.display = 'block';
+      el.classList.add('open');
+    } else {
+      el.style.display = 'none';
+      el.classList.remove('open');
+    }
+  });
+  const bd = document.getElementById('panel-backdrop');
+  if (bd) {
+    // Excepción: el Constructor 3D necesita interactuar con el mapa (dibujar).
+    // No mostramos el backdrop para que el mapa quede visible y clicable.
+    if (id === 'builder-panel') bd.classList.remove('show');
+    else bd.classList.add('show');
+  }
+  if (id === 'user-panel') onAuthInput();
+}
+
+function closePanels() {
+  PANEL_IDS.forEach(pid => {
+    const el = document.getElementById(pid);
+    if (el) { el.style.display = 'none'; el.classList.remove('open'); }
+  });
+  const bd = document.getElementById('panel-backdrop');
+  if (bd) bd.classList.remove('show');
 }
 
 function reloadStyle() {
@@ -252,6 +372,15 @@ function showInfo(id, msg, type) {
   el.className = `status-msg ${type}`;
   el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ─── Layer Controls removed as they load automatically ───
@@ -561,6 +690,205 @@ function clearDrawPreview() {
   }
 }
 
+// ─── Auth (Login / Registro) ───
+
+const TOKEN_KEY = 'nj_token';
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function getAuthHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': 'Bearer ' + t } : {};
+}
+
+function isLoggedIn() {
+  return !!getToken();
+}
+
+function showUserStatus(msg, type) {
+  const el = document.getElementById('user-status');
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+  el.style.display = 'block';
+}
+
+function setFieldHint(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = 'field-hint' + (type ? ' ' + type : '');
+}
+
+function refreshUserUI() {
+  const loggedIn = isLoggedIn();
+  document.getElementById('user-logged-out').style.display = loggedIn ? 'none' : 'block';
+  document.getElementById('user-logged-in').style.display = loggedIn ? 'block' : 'none';
+  if (loggedIn) {
+    try {
+      const payload = JSON.parse(atob(getToken().split('.')[1]));
+      const uname = payload.sub || 'usuario';
+      document.getElementById('user-name').textContent = '@' + uname;
+      document.getElementById('user-avatar').textContent = (uname[0] || '?').toUpperCase();
+    } catch (e) {
+      document.getElementById('user-name').textContent = '@usuario';
+      document.getElementById('user-avatar').textContent = '?';
+    }
+    loadProfile();
+  } else {
+    document.getElementById('filter-mine').classList.remove('active');
+    document.getElementById('filter-all').classList.add('active');
+    _builtFilter = 'all';
+  }
+}
+
+async function loadProfile() {
+  try {
+    const r = await fetch('/api/v1/users/me', { headers: getAuthHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('user-count').textContent = d.building_count ?? 0;
+    if (d.created_at) {
+      const dt = new Date(d.created_at);
+      if (!isNaN(dt)) {
+        document.getElementById('user-since').textContent = 'Miembro desde ' + dt.toLocaleDateString('es');
+      }
+    }
+  } catch (e) { /* silencioso */ }
+}
+
+let _authMode = 'login';
+
+function switchAuthTab(mode) {
+  _authMode = mode;
+  document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+  document.getElementById('tab-register').classList.toggle('active', mode === 'register');
+  document.getElementById('register-extra').style.display = mode === 'register' ? 'block' : 'none';
+  document.getElementById('terms-row').style.display = mode === 'register' ? 'flex' : 'none';
+  document.getElementById('auth-submit').textContent = mode === 'login' ? '🔑 Entrar' : '✨ Crear cuenta';
+  const st = document.getElementById('user-status');
+  st.style.display = 'none';
+  onAuthInput();
+}
+
+function validateUsername(u) {
+  if (!u) return { ok: false, msg: 'Ingresa un usuario', type: 'err' };
+  if (u.length < 3) return { ok: false, msg: 'Mínimo 3 caracteres', type: 'err' };
+  if (u.length > 30) return { ok: false, msg: 'Máximo 30 caracteres', type: 'err' };
+  if (!/^[a-zA-Z0-9_]+$/.test(u)) return { ok: false, msg: 'Solo letras, números y _', type: 'err' };
+  return { ok: true, msg: '', type: '' };
+}
+
+function validatePassword(p) {
+  if (!p) return { ok: false, score: 0, msg: 'Ingresa una clave', type: 'err' };
+  let score = 0;
+  if (p.length >= 8) score++;
+  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) score++;
+  if (/\d/.test(p)) score++;
+  if (/[^a-zA-Z0-9]/.test(p)) score++;
+  if (p.length < 8) return { ok: false, score, msg: 'Mínimo 8 caracteres', type: 'err' };
+  if (score < 3) return { ok: false, score, msg: 'Usa mayús, minús, núm y símbolo', type: 'err' };
+  return { ok: true, score, msg: 'Clave segura', type: 'ok' };
+}
+
+function updateStrength(p) {
+  const bar = document.querySelector('#pw-strength .pw-bar');
+  const v = validatePassword(p);
+  const colors = ['#ef4444', '#f59e0b', '#f59e0b', '#22c55e', '#22c55e'];
+  const pct = [0, 25, 50, 75, 100][v.score] || 0;
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.style.background = colors[v.score] || '#ef4444';
+  }
+  return v;
+}
+
+let _usernameTimer = null;
+
+function onAuthInput() {
+  const u = document.getElementById('u-username').value.trim();
+  const p = document.getElementById('u-password').value;
+  const uRes = validateUsername(u);
+  setFieldHint('u-username-hint', u ? uRes.msg : '', uRes.ok ? 'ok' : (u ? 'err' : ''));
+  const pRes = updateStrength(p);
+  setFieldHint('u-password-hint', p ? pRes.msg : '', pRes.ok ? 'ok' : (p ? 'err' : ''));
+  if (_authMode === 'register') {
+    const p2 = document.getElementById('u-password2').value;
+    if (p2 && p2 !== p) setFieldHint('u-password2-hint', 'Las claves no coinciden', 'err');
+    else setFieldHint('u-password2-hint', '', '');
+    if (uRes.ok) {
+      clearTimeout(_usernameTimer);
+      _usernameTimer = setTimeout(checkUsername, 500);
+    }
+  }
+}
+
+async function checkUsername() {
+  const u = document.getElementById('u-username').value.trim();
+  if (!validateUsername(u).ok) return;
+  try {
+    const r = await fetch('/api/v1/auth/check-username?username=' + encodeURIComponent(u));
+    const d = await r.json();
+    if (!d.available) setFieldHint('u-username-hint', 'Ese usuario ya existe', 'err');
+    else setFieldHint('u-username-hint', 'Usuario disponible', 'ok');
+  } catch (e) { /* silencioso */ }
+}
+
+async function submitAuth() {
+  const u = document.getElementById('u-username').value.trim();
+  const p = document.getElementById('u-password').value;
+  const uRes = validateUsername(u);
+  const pRes = validatePassword(p);
+  setFieldHint('u-username-hint', u ? uRes.msg : '', uRes.ok ? 'ok' : 'err');
+  setFieldHint('u-password-hint', p ? pRes.msg : '', pRes.ok ? 'ok' : 'err');
+  if (!uRes.ok || !pRes.ok) {
+    showUserStatus('Corrige los campos marcados', 'error');
+    return;
+  }
+  if (_authMode === 'register') {
+    const p2 = document.getElementById('u-password2').value;
+    if (p !== p2) { setFieldHint('u-password2-hint', 'Las claves no coinciden', 'err'); showUserStatus('Las claves no coinciden', 'error'); return; }
+    if (!document.getElementById('u-terms').checked) { showUserStatus('Debes aceptar los términos', 'error'); return; }
+  }
+  const btn = document.getElementById('auth-submit');
+  btn.classList.add('loading');
+  try {
+    const res = _authMode === 'login'
+      ? await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ username: u, password: p })
+        })
+      : await fetch('/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showUserStatus('Error: ' + (err.detail || (_authMode === 'login' ? 'credenciales inválidas' : 'no se pudo registrar')), 'error');
+      return;
+    }
+    const data = await res.json();
+    localStorage.setItem(TOKEN_KEY, data.access_token);
+    document.getElementById('u-password').value = '';
+    document.getElementById('u-password2').value = '';
+    showUserStatus(_authMode === 'login' ? '¡Sesión iniciada!' : '¡Cuenta creada y sesión iniciada!', 'success');
+    refreshUserUI();
+  } catch (e) {
+    showUserStatus(_authMode === 'login' ? 'Error de red al iniciar sesión' : 'Error de red al registrarse', 'error');
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+function logout() {
+  localStorage.removeItem(TOKEN_KEY);
+  refreshUserUI();
+  showUserStatus('Sesión cerrada', 'success');
+}
+
 // ─── Constructor 3D Logic ───
 
 let builderDrawingActive = false;
@@ -586,11 +914,12 @@ function startBuilderDrawing() {
   document.getElementById('btn-draw-builder').textContent = '✋ Cancelar';
   document.getElementById('btn-draw-builder').className = 'btn btn-danger btn-sm flex-1';
   document.getElementById('btn-clear-builder').style.display = 'none';
+  document.getElementById('btn-finish-builder').style.display = 'none';
   document.getElementById('builder-controls').style.display = 'none';
   
   map.getCanvas().style.cursor = 'crosshair';
   clearDrawPreview();
-  showInfo('builder-status', 'Haz click en el mapa para trazar los puntos. Doble click para cerrar.', 'success');
+  showInfo('builder-status', 'Haz click en el mapa para trazar los puntos. Cuando tengas 3 o más, presiona "Cerrar Polígono".', 'success');
 }
 
 function cancelBuilderDrawing() {
@@ -601,6 +930,7 @@ function cancelBuilderDrawing() {
   document.getElementById('btn-draw-builder').textContent = '✏️ Dibujar Base';
   document.getElementById('btn-draw-builder').className = 'btn btn-primary btn-sm flex-1';
   document.getElementById('btn-clear-builder').style.display = 'none';
+  document.getElementById('btn-finish-builder').style.display = 'none';
   document.getElementById('builder-controls').style.display = 'none';
   
   map.getCanvas().style.cursor = '';
@@ -643,6 +973,13 @@ function updateBuilderPreview() {
   
   map.getSource('draw-preview').setData({ type: 'FeatureCollection', features });
   ensureBuilderDrawLayers();
+
+  const finishBtn = document.getElementById('btn-finish-builder');
+  if (builderDrawingActive && builderPoints.length >= 3) {
+    finishBtn.style.display = 'inline-flex';
+  } else {
+    finishBtn.style.display = 'none';
+  }
 }
 
 function ensureBuilderDrawLayers() {
@@ -697,6 +1034,7 @@ function finishBuilderDrawing() {
   document.getElementById('btn-draw-builder').textContent = '✏️ Redibujar';
   document.getElementById('btn-draw-builder').className = 'btn btn-outline btn-sm flex-1';
   document.getElementById('btn-clear-builder').style.display = 'inline-flex';
+  document.getElementById('btn-finish-builder').style.display = 'none';
   document.getElementById('builder-controls').style.display = 'block';
   
   updatePreviewStyle();
@@ -707,6 +1045,12 @@ function finishBuilderDrawing() {
 async function saveBuilding() {
   if (!completedPolygon) {
     showInfo('builder-status', 'Primero dibuja una base de casa', 'error');
+    return;
+  }
+
+  if (!isLoggedIn()) {
+    showInfo('builder-status', '🔑 Inicia sesión para construir tu casa', 'error');
+    openPanel('user-panel');
     return;
   }
   
@@ -722,33 +1066,62 @@ async function saveBuilding() {
   };
   
   try {
-    const res = await fetch('/api/v1/buildings', {
+    const resp = await fetch('/api/v1/buildings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders()),
       body: JSON.stringify(payload)
-    }).then(r => r.json());
-    
+    });
+    const res = await resp.json();
+
+    if (resp.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      refreshUserUI();
+      showInfo('builder-status', '🔑 Tu sesión expiró. Inicia sesión de nuevo.', 'error');
+      openPanel('user-panel');
+      return;
+    }
+
     if (res.status === 'success') {
       showInfo('builder-status', '¡Casa construida con éxito en el mundo real!', 'success');
-      
+       
       cancelBuilderDrawing();
-      
+       
       map.setStyle('/api/v1/style.json');
       map.once('style.load', () => {
         initDrawSource();
         loadBuiltBuildings();
       });
     } else {
-      showInfo('builder-status', 'Error al guardar la casa: ' + res.message, 'error');
+      showInfo('builder-status', 'Error al guardar la casa: ' + (res.message || res.detail || 'desconocido'), 'error');
     }
   } catch (err) {
     showInfo('builder-status', 'Error de red al guardar la casa', 'error');
   }
 }
 
+let _builtFilter = 'all';
+
+function setBuiltFilter(mode) {
+  if (mode === 'mine' && !isLoggedIn()) {
+    showInfo('builder-status', '🔑 Inicia sesión para ver tus casas', 'error');
+    openPanel('user-panel');
+    return;
+  }
+  _builtFilter = mode;
+  document.getElementById('filter-all').classList.toggle('active', mode === 'all');
+  document.getElementById('filter-mine').classList.toggle('active', mode === 'mine');
+  loadBuiltBuildings();
+}
+
 async function loadBuiltBuildings() {
   try {
-    const geojson = await fetch('/api/v1/buildings').then(r => r.json());
+    let url = '/api/v1/buildings';
+    let opts = {};
+    if (_builtFilter === 'mine' && isLoggedIn()) {
+      url += '?mine=true';
+      opts = { headers: getAuthHeaders() };
+    }
+    const geojson = await fetch(url, opts).then(r => r.json());
     const list = document.getElementById('built-list');
     const countSpan = document.getElementById('built-count');
     
@@ -763,14 +1136,19 @@ async function loadBuiltBuildings() {
     
     geojson.features.forEach(f => {
       const p = f.properties;
+      const safeName = esc(p.name || 'Casa 3D');
+      const safeUser = p.user ? esc(p.user) : 'anónimo';
       const item = document.createElement('div');
       item.className = 'layer-item';
       item.style.fontSize = '0.7rem';
       item.innerHTML = `
-        <div style="display:flex;align-items:center;gap:6px;overflow:hidden;flex:1;cursor:pointer">
-          <div style="width:10px;height:10px;border-radius:50%;background:${p.color};flex-shrink:0"></div>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${p.name}">${p.name}</span>
-          <span class="text-muted">(${p.height}m)</span>
+        <div style="display:flex;flex-direction:column;gap:2px;overflow:hidden;flex:1;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:6px;overflow:hidden">
+            <div style="width:10px;height:10px;border-radius:50%;background:${p.color};flex-shrink:0"></div>
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600" title="${safeName}">${safeName}</span>
+            <span class="text-muted">(${p.height}m)</span>
+          </div>
+          <span class="text-muted" style="font-size:0.62rem;padding-left:16px">🏗️ por @${safeUser}</span>
         </div>
         <span class="coord-delete" onclick="deleteBuiltBuilding(${p.id}, event)" title="Demoler casa" style="font-size:0.65rem;font-weight:bold;margin-left:4px">✕</span>
       `;
@@ -827,7 +1205,16 @@ document.addEventListener('keydown', (e) => {
     drawPoints = [];
     clearDrawPreview();
     setDrawMode(null);
+    closePanels();
   }
+});
+
+// Cargar al iniciar
+map.on('load', () => {
+  initDrawSource();
+  initPlottedSource();
+  loadBuiltBuildings();
+  refreshUserUI();
 });
 
 
