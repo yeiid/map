@@ -4,10 +4,7 @@ services:
     image: postgis/postgis:15-3.4
     restart: unless-stopped
     shm_size: 1gb
-    # No host port binding — accessed internally via map-net
-    # For local dev, set DB_PORT in .env and uncomment:
-    ports:
-      - "${DB_PORT:-5433}:5432"
+    # No host port binding — accessed internally via map-net only
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mapengine}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mapengine123}
