@@ -95,15 +95,55 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56
 .profile-stat .stat-num{font-size:1.4rem;font-weight:800;color:var(--accent);line-height:1}
 .profile-stat .stat-label{font-size:.7rem;color:var(--muted)}
 .built-filter{display:flex;gap:4px;margin-top:10px}
+/* ─── Mobile Handle ─── */
+.panel-handle{display:none;width:40px;height:4px;border-radius:4px;background:var(--muted);margin:0 auto 6px;opacity:.5}
+@media(max-width:768px){.panel-handle{display:block}}
+/* ─── Mobile Responsive ─── */
+.mobile-menu-btn{display:none;position:fixed;top:10px;right:10px;z-index:20;width:44px;height:44px;border-radius:50%;background:rgba(15,23,42,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text);font-size:1.2rem;cursor:pointer;align-items:center;justify-content:center;transition:.15s}
+.mobile-menu-btn:hover{background:var(--accent);color:var(--bg)}
+.mobile-menu-btn.active{background:var(--accent);color:var(--bg)}
+@media(max-width:768px){
+  .mobile-menu-btn{display:flex}
+  .control-panel{position:fixed;top:auto;bottom:0;left:0;right:0;max-width:100%;max-height:60vh;border-radius:16px 16px 0 0;margin:0;transition:transform .25s cubic-bezier(.4,0,.2,1);transform:translateY(0);z-index:15}
+  .control-panel.collapsed{transform:translateY(calc(100% - 50px))}
+  .control-panel.collapsed .panel:first-child{padding-bottom:10px}
+  .control-panel .panel{border-radius:12px 12px 0 0}
+  #builder-panel{max-height:40vh;overflow-y:auto}
+  #builder-controls{max-height:20vh;overflow-y:auto}
+  .btn{padding:10px 14px;font-size:.8rem;min-height:40px}
+  .draw-btn{padding:8px 12px;font-size:.75rem;min-height:36px}
+  input,select{font-size:.82rem;padding:10px 12px;min-height:40px}
+  #built-list{max-height:120px!important}
+  .coord-list{max-height:120px!important}
+  .panel-title{font-size:.75rem}
+  .row label{font-size:.75rem}
+  .text-muted{font-size:.75rem}
+  /* builder compact mode when drawing */
+  #builder-panel.drawing-mode .panel-title,
+  #builder-panel.drawing-mode p.text-muted,
+  #builder-panel.drawing-mode #builder-controls,
+  #builder-panel.drawing-mode #builder-status,
+  #builder-panel.drawing-mode .built-filter,
+  #builder-panel.drawing-mode #built-list,
+  #builder-panel.drawing-mode .panel-title:last-of-type,
+  #builder-panel.drawing-mode br{display:none}
+  #builder-panel.drawing-mode .draw-tools,
+  #builder-panel.drawing-mode .flex.gap-4.mb-8{display:flex!important}
+  #builder-panel.drawing-mode{padding:8px}
+  #builder-panel.drawing-mode .flex.gap-4.mb-8{margin-bottom:0!important}
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
+<button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobilePanel()" title="Menú">☰</button>
+
 <div class="panel-backdrop" id="panel-backdrop" onclick="closePanels()"></div>
 
 <div class="control-panel" id="panel-container">
   <div class="panel">
+    <div class="panel-handle"></div>
     <div class="panel-title">🗺️ NeuralJira Map</div>
     <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:6px">
       <button class="btn btn-outline btn-sm" onclick="reloadStyle()">🔄 Recargar Mapa</button>
@@ -303,6 +343,11 @@ map.on('click', (e) => {
       drawPoints.push([lng, lat]);
       updateDrawPreview();
     }
+  } else if (isMobile && isMobile()) {
+    const bd = document.getElementById('panel-backdrop');
+    if (bd && bd.classList.contains('show')) {
+      closePanels();
+    }
   }
 });
 
@@ -353,6 +398,54 @@ function closePanels() {
   });
   const bd = document.getElementById('panel-backdrop');
   if (bd) bd.classList.remove('show');
+  const cp = document.getElementById('panel-container');
+  if (cp) cp.classList.add('collapsed');
+  const mBtn = document.getElementById('mobile-menu-btn');
+  if (mBtn) { mBtn.classList.remove('active'); mBtn.textContent = '☰'; }
+  // Exit builder drawing mode if active
+  if (builderDrawingActive) cancelBuilderDrawing();
+}
+
+function isMobile() {
+  return window.innerWidth <= 768;
+}
+
+function toggleMobilePanel() {
+  const cp = document.getElementById('panel-container');
+  const mBtn = document.getElementById('mobile-menu-btn');
+  if (!cp) return;
+  const isCollapsed = cp.classList.contains('collapsed');
+  if (isCollapsed) {
+    cp.classList.remove('collapsed');
+    mBtn.classList.add('active');
+    mBtn.textContent = '✕';
+  } else {
+    closePanels();
+  }
+}
+
+// Click on the panel handle to expand
+document.addEventListener('click', (e) => {
+  const handle = e.target.closest('.panel-handle');
+  if (handle && isMobile()) {
+    const cp = document.getElementById('panel-container');
+    if (cp && cp.classList.contains('collapsed')) {
+      toggleMobilePanel();
+    }
+  }
+});
+
+// Auto-collapse on mobile when opening panels
+const origOpenPanel = openPanel;
+openPanel = function(id) {
+  origOpenPanel(id);
+  if (isMobile()) {
+    const cp = document.getElementById('panel-container');
+    const mBtn = document.getElementById('mobile-menu-btn');
+    if (cp) cp.classList.remove('collapsed');
+    if (mBtn) { mBtn.classList.add('active'); mBtn.textContent = '✕'; }
+    // For builder panel on mobile, ensure compact mode
+  }
 }
 
 function reloadStyle() {
@@ -920,6 +1013,12 @@ function startBuilderDrawing() {
   map.getCanvas().style.cursor = 'crosshair';
   clearDrawPreview();
   showInfo('builder-status', 'Haz click en el mapa para trazar los puntos. Cuando tengas 3 o más, presiona "Cerrar Polígono".', 'success');
+  
+  // Mobile: compact mode only show essential draw tools
+  const bp = document.getElementById('builder-panel');
+  if (isMobile()) {
+    bp.classList.add('drawing-mode');
+  }
 }
 
 function cancelBuilderDrawing() {
@@ -935,6 +1034,10 @@ function cancelBuilderDrawing() {
   
   map.getCanvas().style.cursor = '';
   clearDrawPreview();
+  
+  // Mobile: remove compact mode
+  const bp = document.getElementById('builder-panel');
+  if (bp) bp.classList.remove('drawing-mode');
 }
 
 function clearBuilder() {
@@ -1036,6 +1139,10 @@ function finishBuilderDrawing() {
   document.getElementById('btn-clear-builder').style.display = 'inline-flex';
   document.getElementById('btn-finish-builder').style.display = 'none';
   document.getElementById('builder-controls').style.display = 'block';
+  
+  // Mobile: remove drawing compact mode
+  const bp = document.getElementById('builder-panel');
+  if (bp) bp.classList.remove('drawing-mode');
   
   updatePreviewStyle();
   
@@ -1215,6 +1322,12 @@ map.on('load', () => {
   initPlottedSource();
   loadBuiltBuildings();
   refreshUserUI();
+  
+  // Mobile init: collapse panel by default on small screens
+  if (isMobile()) {
+    const cp = document.getElementById('panel-container');
+    if (cp) cp.classList.add('collapsed');
+  }
 });
 
 
